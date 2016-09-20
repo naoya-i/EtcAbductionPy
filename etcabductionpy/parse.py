@@ -7,6 +7,7 @@
 from __future__ import print_function
 import argparse
 import sys
+import collections
 
 def parse(src):
     '''Parse multiple expressions in src text into a list of python list s-expressions'''
@@ -14,7 +15,7 @@ def parse(src):
 
 def sexp(src):
     '''Convert src text into a python list s-expressions'''
-    return read_from_tokens(tokenize(decomment(src)))
+    return read_from_tokens(collections.deque(tokenize(decomment(src))))
 
 def decomment(src):
     '''Ignore anything on a line following a semicolon'''
@@ -34,12 +35,12 @@ def read_from_tokens(tokens):
     '''Read an expression from a sequence of tokens.'''
     if len(tokens) == 0:
         raise SyntaxError('unexpected EOF while reading')
-    token = tokens.pop(0)
+    token = tokens.popleft()
     if '(' == token:
         L = []
         while tokens[0] != ')':
             L.append(read_from_tokens(tokens))
-        tokens.pop(0) # pop off ')'
+        tokens.popleft() # pop off ')'
         return L
     elif ')' == token:
         raise SyntaxError('unexpected )')
@@ -73,7 +74,7 @@ def antecedent(rule): # always a list of literals
 
 def consequent(rule): # always a literal
     return rule[2]
-    
+
 def arity_warnings(definite_clauses):
     '''None where predicates and functions have consistent arity throughout a list of expressions'''
     warnings = set()
@@ -126,12 +127,12 @@ def literals(definite_clause):
     else:
         raise SyntaxError("Malformed definite_clause: " + str(definite_clause))
 
-def functions(literal): 
+def functions(literal):
     '''Returns a list of all of the functions used in the arguments of the literal'''
     if literal == []:
         return []
     if isinstance(literal[0], list):
-        return [literal[0]] + functions(literal[1:]) 
+        return [literal[0]] + functions(literal[1:])
     else:
         return functions(literal[1:])
     pass
@@ -183,7 +184,3 @@ if __name__ == "__main__":
     else:
         for l in outlist:
             print(repr(l), file = args.outfile)
-
-
-
-    
