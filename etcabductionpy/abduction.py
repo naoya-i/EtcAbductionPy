@@ -41,10 +41,11 @@ def and_or_leaflists(remaining, indexed_kb, depth, antecedents = [], assumptions
     else: # more to go on this level
         literal = remaining[0] # first of remaining
         predicate = literal[0]
+
         if predicate not in indexed_kb:
             return and_or_leaflists(remaining[1:], indexed_kb, depth, antecedents, [literal] + assumptions) # shift literal to assumptions
         else:
-            revisions = [] 
+            revisions = []
             for rule in indexed_kb[predicate]: # indexed by predicate of literal
                 theta = unify.unify(literal, parse.consequent(rule))
                 if theta != None:
@@ -56,7 +57,40 @@ def and_or_leaflists(remaining, indexed_kb, depth, antecedents = [], assumptions
                                       unify.standardize(unify.subst(theta, parse.antecedent(rule))) +
                                       unify.subst(theta, antecedents),  # new antecedents with substitutions
                                       unify.subst(theta, assumptions)]) # new assumptions with substitutions
+
             return itertools.chain(*[and_or_leaflists(*rev) for rev in revisions]) # list of lists (if any)
+
+def comp_deduce_andor_assumptions(obs, indexed_kb, depth):
+    '''Returns list of all entailing sets of leafs in the and-or backchaining tree. Logically, this function applies predicate completion to the knowledge base (say, comp(B)), and deduce the logical consequences of H \cup comp(B). The logical conseuqences is in the form of and-or logical formula.'''
+
+    assumptions = []
+    assumptions.extend([(0, obs, ob) for ob in obs])
+
+    while len(assumptions) > 0:
+
+        # pop the first one
+        level, conj, literal = assumptions.pop(0)
+        predicate = literal[0]
+
+        # search for applicable backward rule
+        if predicate in indexed_kb:
+            possible_explanations = []
+
+            for rule in indexed_kb[predicate]:
+                theta = unify.unify(literal, parse.consequent(rule))
+
+                if theta == None:
+                    continue
+
+                new_assumptions = unify.standardize(unify.subst(theta, parse.antecedent(rule)))
+
+                possible_explanations += [new_assumptions]
+                assumptions += [(level+1, new_assumptions, l) for l in new_assumptions]
+
+            yield (literal, conj, possible_explanations)
+
+        else:
+            yield (literal, conj, [])
 
 def crunch(conjunction): # returns a list of all possible ways to unify conjunction literals
     conjunction = [k for k,v in itertools.groupby(sorted(conjunction))] # remove duplicates
@@ -64,7 +98,7 @@ def crunch(conjunction): # returns a list of all possible ways to unify conjunct
     pairs = itertools.combinations(conjunction, 2)
     thetas = [theta for theta in [unify.unify(p[0], p[1]) for p in pairs] if theta is not None]
     ps = powerset(thetas)
-    for thetaset in ps: 
+    for thetaset in ps:
         if len(thetaset) > 0:
             consistent = mergethetas(thetaset)
             if consistent:
