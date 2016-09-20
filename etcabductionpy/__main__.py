@@ -57,6 +57,10 @@ argparser.add_argument('-l', '--ilp',
                        action='store_true',
                        help='Use ILP solver to get solution(s)')
 
+argparser.add_argument('-lv','--ilp-verbose',
+                       action='store_true',
+                       help='Output ILP solver log')
+
 argparser.add_argument('-f', '--forward',
                        action='store_true',
                        help='Forward chain from INFILE with KB')
@@ -93,7 +97,8 @@ if args.all:
     solutions = etcetera.etcAbduction(obs, kb, args.depth)
 else:
     if args.ilp:
-        solutions = etcetera.ilpsol(obs, kb, args.depth, args.nbest)
+        import etcetera_ilp
+        solutions = etcetera_ilp.ilpsol(obs, kb, args.depth, args.nbest, args.ilp_verbose)
 
     else:
         solutions = etcetera.nbest(obs, kb, args.depth, args.nbest)
