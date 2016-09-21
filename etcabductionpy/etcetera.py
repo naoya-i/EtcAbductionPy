@@ -6,16 +6,29 @@ import unify
 import abduction
 import bisect
 import itertools
+import time
 
-def etcAbduction(obs, kb, maxdepth, skolemize = True):
+def etcAbduction(obs, kb, indexed_kb, maxdepth, skolemize = True):
     '''Trying something faster'''
-    indexed_kb = abduction.index_by_consequent_predicate(kb)
     res = []
+
+    time_start = time.time()
+
     listoflists = [abduction.and_or_leaflists([ob], indexed_kb, maxdepth) for ob in obs]
 
     for u in itertools.product(*listoflists):
         u = list(itertools.chain.from_iterable(u))
-        res.extend(abduction.crunch(u))
+        hypotheses = abduction.crunch(u)
+
+        # check if the solution contains etcetera literals only.
+        for hypothesis in hypotheses:
+            for literal in hypothesis:
+                if not literal[0].startswith("etc"):
+                    break
+
+            else:
+                res += [hypothesis]
+
     res.sort(key=lambda item: jointProbability(item), reverse=True)
     if skolemize:
         return [unify.skolemize(r) for r in res]
@@ -35,25 +48,31 @@ def bestCaseProbability(etcs):
             pr = pr * literal[1]
     return pr
 
-def nbest(obs, kb, maxdepth, n, skolemize = True):
-    indexed_kb = abduction.index_by_consequent_predicate(kb)
+def nbest(obs, kb, indexed_kb, maxdepth, n, skolemize = True):
     pr2beat = 0.0
     nbest = [] # solutions
     nbestPr = [] # probabilities
     listoflists = [abduction.and_or_leaflists([ob], indexed_kb, maxdepth) for ob in obs]
     for u in itertools.product(*listoflists):
         u = list(itertools.chain.from_iterable(u))
-        if bestCaseProbability(u) > pr2beat:
-            for solution in abduction.crunch(u):
-                jpr = jointProbability(solution)
-                if jpr > pr2beat:
-                    insertAt = bisect.bisect_left(nbestPr, jpr)
-                    nbest.insert(insertAt, solution)
-                    nbestPr.insert(insertAt, jpr)
-                    if len(nbest) > n:
-                        nbest.pop(0)
-                        nbestPr.pop(0)
-                        pr2beat = nbestPr[0] # only if full
+
+        # check if the solution contains etcetera literals only.
+        for literal in u:
+            if not literal[0].startswith("etc"):
+                break
+
+        else:
+            if bestCaseProbability(u) > pr2beat:
+                for solution in abduction.crunch(u):
+                    jpr = jointProbability(solution)
+                    if jpr > pr2beat:
+                        insertAt = bisect.bisect_left(nbestPr, jpr)
+                        nbest.insert(insertAt, solution)
+                        nbestPr.insert(insertAt, jpr)
+                        if len(nbest) > n:
+                            nbest.pop(0)
+                            nbestPr.pop(0)
+                            pr2beat = nbestPr[0] # only if full
     nbest.reverse() # [0] is now highest
     if skolemize:
         return [unify.skolemize(r) for r in nbest]

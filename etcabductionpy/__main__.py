@@ -9,7 +9,11 @@ import sys
 
 import parse
 import etcetera
+import abduction
 import forward
+
+import cPickle
+import logging
 
 argparser = argparse.ArgumentParser(description='Etcetera Abduction in Python')
 
@@ -29,6 +33,16 @@ argparser.add_argument('-k', '--kb',
                        nargs='?',
                        type=argparse.FileType('r'),
                        help='Knowledge base of definite clauses as lisp s-expressions')
+
+argparser.add_argument('-kp', '--kbpickle',
+                       nargs='?',
+                       type=argparse.FileType('rb'),
+                       help='Pickle knowledge base of definite clauses as lisp s-expressions')
+
+argparser.add_argument('-kc', '--kbcache',
+                       nargs='?',
+                       type=argparse.FileType('wb'),
+                       help='Cache knowledge base.')
 
 argparser.add_argument('-n', '--nbest',
                        type=int,
@@ -67,6 +81,15 @@ argparser.add_argument('-f', '--forward',
 
 args = argparser.parse_args()
 
+logging.basicConfig(level=logging.INFO)
+
+# For kb caching.
+
+if args.kbcache:
+    kblines = args.kb.readlines()
+    kbtext = "".join(kblines)
+    cPickle.dump(parse.parse(kbtext), args.kbcache)
+    sys.exit()
 
 # Load files
 
@@ -80,6 +103,15 @@ if args.kb:
     kbkb, kbobs = parse.definite_clauses(parse.parse(kbtext))
     kb.extend(kbkb)
 
+if args.kbpickle:
+    kbkb, kbobs = parse.definite_clauses(cPickle.load(args.kbpickle))
+    kb.extend(kbkb)
+
+    logging.info("Knowledge base loaded.")
+
+indexed_kb = abduction.index_by_consequent_predicate(kb)
+logging.info("Knowledge base indexed.")
+
 # Handle forward
 
 if args.forward:
@@ -92,16 +124,23 @@ if args.forward:
     sys.exit()
 
 # Handle abduction
+import time
+time_start = time.time()
 
 if args.all:
-    solutions = etcetera.etcAbduction(obs, kb, args.depth)
+    solutions = etcetera.etcAbduction(obs, kb, indexed_kb, args.depth)
 else:
     if args.ilp:
         import etcetera_ilp
-        solutions = etcetera_ilp.ilpsol(obs, kb, args.depth, args.nbest, args.ilp_verbose)
+
+        # import may take a while.
+        time_start = time.time()
+        solutions = etcetera_ilp.ilpsol(obs, kb, indexed_kb, args.depth, args.nbest, args.ilp_verbose)
 
     else:
-        solutions = etcetera.nbest(obs, kb, args.depth, args.nbest)
+        solutions = etcetera.nbest(obs, kb, indexed_kb, args.depth, args.nbest)
+
+logging.info("Took %f seconds for inference." % (time.time() - time_start))
 
 if args.graph:
     solution = solutions[args.solution - 1]
@@ -110,7 +149,8 @@ if args.graph:
 else:
     for solution in solutions:
         print(parse.display(solution), file=args.outfile)
-    print(str(len(solutions)) + " solutions.")
+        
+logging.info(str(len(solutions)) + " solutions.")
 
 
 # To do: enable skolemize as an option

@@ -4,15 +4,16 @@
 
 import parse
 import unify
+import collections
 
 def forward(facts, kb):
     '''An exhaustive forward chaining algorithm for first-order definite clauses'''
     # each production is [antecedent_list, consequent_literal, triggers]
-    stack = list(facts)
+    stack = collections.deque(facts)
     productions = [[parse.antecedent(k), parse.consequent(k), []] for k in kb]
     entailed = []
     while len(stack) > 0:
-        current = stack.pop(0)
+        current = stack.popleft()
         for prod in productions:
             for ant in prod[0]:
                 theta = unify.unify(current, ant)
@@ -66,5 +67,5 @@ def nodelabel(expression):
             return "(" + " ".join(nodelabel(i) for i in expression) + ")"
     else:
         return str(expression)
-                                           
+
 # todo: When do we need to standardize variables?
