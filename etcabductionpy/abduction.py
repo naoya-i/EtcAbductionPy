@@ -64,22 +64,22 @@ def and_or_leaflists(remaining, indexed_kb, depth, antecedents = [], assumptions
 def comp_deduce_andor_assumptions(obs, indexed_kb, depth):
     '''Returns list of all entailing sets of leafs in the and-or backchaining tree. Logically, this function applies predicate completion to the knowledge base (say, comp(B)), and deduce the logical consequences of H \cup comp(B). The logical conseuqences is in the form of and-or logical formula.'''
 
-    assumptions = collections.deque()
-    assumptions.extend([(0, obs, ob) for ob in obs])
+    literal_counter = 0
 
-    backchained_on = {}
+    assumptions = collections.deque()
+    obs_conj    = []
+
+    for ob in obs:
+        obs_conj += [(literal_counter, ob)]
+        literal_counter += 1
+
+    assumptions.extend([(l_id, 0, obs_conj, l) for l_id, l in obs_conj])
 
     while len(assumptions) > 0:
 
         # pop the first one
-        level, conj, literal = assumptions.popleft()
+        literal_id, level, conj, literal = assumptions.popleft()
         predicate = literal[0]
-
-        # never do the same backchaining again.
-        if backchained_on.has_key(tuple(literal)):
-            continue
-
-        backchained_on[tuple(literal)] = 1
 
         # search for applicable backward rule
         if level < depth and predicate in indexed_kb:
@@ -91,16 +91,20 @@ def comp_deduce_andor_assumptions(obs, indexed_kb, depth):
                 if theta == None:
                     continue
 
-                new_assumptions = unify.standardize(unify.subst(theta, parse.antecedent(rule)))
+                new_assumptions = []
+
+                for new_assum_lit in unify.standardize(unify.subst(theta, parse.antecedent(rule))):
+                    new_assumptions += [(literal_counter, new_assum_lit)]
+                    literal_counter += 1
 
                 possible_explanations += [new_assumptions]
-                assumptions += [(level+1, new_assumptions, l) for l in new_assumptions]
+                assumptions += [(l_id, level+1, new_assumptions, l) for l_id, l in new_assumptions]
 
-            yield (literal, level, conj, possible_explanations)
+            yield (literal_id, literal, level, conj, possible_explanations)
 
         else:
             # no applicable rules
-            yield (literal, level, conj, [])
+            yield (literal_id, literal, level, conj, [])
 
 def crunch(conjunction): # returns a list of all possible ways to unify conjunction literals
     conjunction = [k for k,v in itertools.groupby(sorted(conjunction))] # remove duplicates
