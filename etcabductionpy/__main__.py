@@ -81,7 +81,11 @@ argparser.add_argument('-f', '--forward',
 
 args = argparser.parse_args()
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)-5s:%(asctime)-15s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
 # For kb caching.
 
@@ -96,6 +100,8 @@ if args.kbcache:
 inlines = args.infile.readlines()
 intext = "".join(inlines)
 kb, obs = parse.definite_clauses(parse.parse(intext))
+
+logging.info("Loading knowledge base...")
 
 if args.kb:
     kblines = args.kb.readlines()
@@ -140,7 +146,8 @@ else:
     else:
         solutions = etcetera.nbest(obs, kb, indexed_kb, args.depth, args.nbest)
 
-logging.info("Took %f seconds for inference." % (time.time() - time_start))
+logging.info(str(len(solutions)) + " solutions.")
+logging.info("It took %.2f sec to find the solutions." % (time.time() - time_start))
 
 if args.graph:
     solution = solutions[args.solution - 1]
@@ -148,9 +155,7 @@ if args.graph:
           file=args.outfile)
 else:
     for solution in solutions:
-        print(parse.display(solution), file=args.outfile)
-        
-logging.info(str(len(solutions)) + " solutions.")
+        print("; prob=%s\n%s" % (etcetera.jointProbability(solution), parse.display(solution)), file=args.outfile)
 
 
 # To do: enable skolemize as an option

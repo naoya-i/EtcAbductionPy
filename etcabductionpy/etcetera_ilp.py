@@ -13,6 +13,17 @@ import collections
 import time
 import logging
 
+def _sig(i, x, setty=False):
+    ls = "_".join([t for t in (x[:-1] if x[0].startswith("etc") else x)])
+
+    if setty:
+        return ls
+    else:
+        return "%s@%s" % (ls, i)
+
+def _conj2predsid(x):
+    return ",".join([_sig(l_id, l) for l_id, l in x])
+
 def ilpsol(obs, kb, indexed_kb, maxdepth, n, verbose = False):
     res = []
     gm = gurobipy.Model("etcabduction")
@@ -20,21 +31,12 @@ def ilpsol(obs, kb, indexed_kb, maxdepth, n, verbose = False):
     time_ilp_gen, time_ilp_sol = 0, 0
 
     hvars, xvars, cvars = {}, {}, {}
-    etcliterals  = set([])
-
-    def _sig(i, x, setty=False):
-        ls = "_".join([t for t in (x[:-1] if x[0].startswith("etc") else x)])
-
-        if setty:
-            return ls
-        else:
-            return "%s@%s" % (ls, i)
-
-    def _conj2predsid(x):
-        return ",".join([_sig(l_id, l) for l_id, l in x])
+    etcliterals         = set([])
 
     #
     # add ILP variables.
+    logging.info("Generating ILP problem...")
+
     time_start = time.time()
 
     potential_conseq = list(abduction.comp_deduce_andor_assumptions(obs, indexed_kb, maxdepth))
@@ -64,23 +66,29 @@ def ilpsol(obs, kb, indexed_kb, maxdepth, n, verbose = False):
 
     #
     # add ILP constraints.
-    l2conjs  = collections.defaultdict(list)
+    conjcons = {}
     etc2etcs = collections.defaultdict(list)
 
     for literal_id, literal, level, literal_conj, possible_expls in potential_conseq:
         signature = _sig(literal_id, literal)
         signature_set = _sig(literal_id, literal, setty=True)
-
-        l2conjs[signature] += [literal_conj]
+        signature_lconj = _conj2predsid(literal_conj)
 
         # constraint: conjunction is true iff all literals are concluded.
         # c_{l1 \land l2 \land ...}=1 <=> x_l1=1 \land x_l2=1 \land ...
-        for conj in possible_expls:
-            gm.addConstr(len(conj)*cvars[_conj2predsid(conj)] <= sum([xvars[_sig(l_id, l)] for l_id, l in conj]))
-            gm.addConstr(sum([xvars[_sig(l_id, l)] for l_id, l in conj]) <= (len(conj)-1) + cvars[_conj2predsid(conj)])
+        if not conjcons.has_key(signature_lconj):
+            conjcons[signature_lconj] = 1
 
-            # constraint: to conclude conjunction, its parent conjunction must be concluded.
-            gm.addConstr(cvars[_conj2predsid(conj)] <= cvars[_conj2predsid(literal_conj)])
+            gm.addConstr(len(literal_conj)*cvars[signature_lconj] <= sum([xvars[_sig(l_id, l)] for l_id, l in literal_conj]))
+            gm.addConstr(sum([xvars[_sig(l_id, l)] for l_id, l in literal_conj]) <= (len(literal_conj)-1) + cvars[signature_lconj])
+
+            # constraint: each consequent must coincide with the conjunction.
+            for l_id, l in literal_conj:
+                gm.addConstr(xvars[_sig(l_id, l)] <= cvars[signature_lconj])
+
+            # constraint: to conclude a explanatory conjunction, I must be concluded.
+            for conj in possible_expls:
+                gm.addConstr(cvars[_conj2predsid(conj)] <= cvars[signature_lconj])
 
         # encode condition of literal being concluded.
         if len(possible_expls) > 0:
@@ -100,6 +108,7 @@ def ilpsol(obs, kb, indexed_kb, maxdepth, n, verbose = False):
             else:
                 # x_p=0
                 if level > 0:
+                    # this literal cannot be concluded.
                     gm.addConstr(xvars[signature] == 0)
 
         # constraint: observation must be concluded.
@@ -107,37 +116,40 @@ def ilpsol(obs, kb, indexed_kb, maxdepth, n, verbose = False):
         if level == 0:
             gm.addConstr(xvars[_sig(literal_id, literal)] == 1)
 
-    # constraint: etc consequents are true iff it is hypothesis
-    # x_p=1 <=> h_p=1
+    # constraint: etc consequents are true iff it is hypothesized
+    # x_etc1@1=1 \lor x_etc1@2=2 \lor ... \lor x_etc1@n=1 <=> h_etc1=1
     for etc, etcs in etc2etcs.iteritems():
         gm.addConstr(hvars[etc] <= sum([xvars[s] for s in etcs]))
         gm.addConstr(sum([xvars[s] for s in etcs]) <= len(etcs)*hvars[etc])
-
-    # constraint: each consequent must coincide with rule.
-    for sl, conjs in l2conjs.iteritems():
-        if sl.startswith("etc"):
-            gm.addConstr(xvars[sl] <= sum([cvars[_conj2predsid(conj)] for conj in conjs]))
 
     # set ILP objective.
     gm.setObjective(sum([math.log(prob) * hvars[signature] for signature, prob in etcliterals]), gurobipy.GRB.MAXIMIZE)
     gm.update()
 
+    logging.info("[ILP problem]")
+    logging.info("  ILP variables: %d ([h] %d, [x] %d, [c] %d)" % (len(gm.getVars()), len(hvars), len(xvars), len(cvars)))
+    logging.info("  ILP constraints: %d" % len(gm.getConstrs()))
+
     time_ilp_gen = time.time() - time_start
-    time_start   = time.time()
 
-    gm.params.outputFlag = 0
+    if not verbose:
+        gm.params.outputFlag = 0
 
-    if verbose:
+    else:
         gm.params.outputFlag = 1
         gm.write("test.lp")
 
-    # get solutions.
+    #
+    # get k-best solutions.
+    time_start = time.time()
     sols = []
 
     for i in xrange(n):
 
         # find the best assignment.
         gm.optimize()
+
+        logging.info("  Got %d-best solution!" % (1+i))
 
         #
         # add new solution (if any).
@@ -158,15 +170,16 @@ def ilpsol(obs, kb, indexed_kb, maxdepth, n, verbose = False):
             ]]
 
         # deny the current sol.
-        gm.addConstr(sum([
-            hvars[signature]
-            if hvars[signature].getAttr(gurobipy.GRB.Attr.X) == 1.0 else
-            1.0 - hvars[signature]
-            for signature, prob in etcliterals
-            ]) <= len(etcliterals)-1)
+        if 1+i < n:
+            gm.addConstr(sum([
+                hvars[signature]
+                if hvars[signature].getAttr(gurobipy.GRB.Attr.X) == 1.0 else
+                1.0 - hvars[signature]
+                for signature, prob in etcliterals
+                ]) <= len(etcliterals)-1)
 
     time_ilp_sol = time.time() - time_start
 
-    logging.info("ILP-Gen: %s, ILP-Opt: %s" % (time_ilp_gen, time_ilp_sol))
+    logging.info("  Inference time: [gen] %.2f, [opt] %.2f" % (time_ilp_gen, time_ilp_sol))
 
     return sols
