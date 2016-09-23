@@ -141,7 +141,7 @@ else:
 
         # import may take a while.
         time_start = time.time()
-        solutions = etcetera_ilp.ilpsol(obs, kb, indexed_kb, args.depth, args.nbest, args.ilp_verbose)
+        solutions = etcetera_ilp.nbest_ilp(obs, kb, indexed_kb, args.depth, args.nbest, args.ilp_verbose)
 
     else:
         solutions = etcetera.nbest(obs, kb, indexed_kb, args.depth, args.nbest)
