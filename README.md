@@ -12,3 +12,5 @@ For more information, see the following:
 
 * `--ilp` or `-l`: use ILP solver (gurobi) to search the (n-)best solution(s).
 * `--ilp-verbose` or `-lv`: output an ILP solver log.
+* `--kbcache [FILE]` or `-kc [FILE]`: create cache of knowledge base on FILE.
+* `--kbpickle [FILE]` or `-kp [FILE]`: use cached knowledge base from FILE.
