@@ -11,6 +11,7 @@ import parse
 import etcetera
 import abduction
 import forward
+import explanation_formula
 
 import cPickle
 import logging
@@ -75,6 +76,10 @@ argparser.add_argument('-lv','--ilp-verbose',
                        action='store_true',
                        help='Output ILP solver log')
 
+argparser.add_argument('-expfg','--expf-graph',
+                       action='store_true',
+                       help='Output explanation formula graph.')
+
 argparser.add_argument('-f', '--forward',
                        action='store_true',
                        help='Forward chain from INFILE with KB')
@@ -117,6 +122,13 @@ if args.kbpickle:
 
 indexed_kb = abduction.index_by_consequent_predicate(kb)
 logging.info("Knowledge base indexed.")
+
+# Explanation formula
+if args.expf_graph:
+    expf = explanation_formula.explanation_formula_t(obs, indexed_kb, args.depth)
+    expf.visualize("/home/naoya-i/public_html/test.dot")
+
+    sys.exit()
 
 # Handle forward
 
