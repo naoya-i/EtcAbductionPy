@@ -6,7 +6,7 @@ import itertools
 
 import gurobipy
 import os
-import math0
+import math
 
 class ilp_wmaxsat_solver_t:
     def __init__(self):
