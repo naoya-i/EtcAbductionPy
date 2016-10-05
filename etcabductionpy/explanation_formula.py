@@ -18,6 +18,7 @@ class explanation_formula_t:
 
         self.generate(obs, 0, -1)
         self._clean_up_unifiables()
+        self._shrink()
 
         # self.unify()
 
@@ -29,6 +30,20 @@ class explanation_formula_t:
                 clean_u[k] = literals
 
         self.unifiables = clean_u
+
+    def _shrink(self):
+        for sym in ['^', 'v']:
+            removed_nodes = []
+
+            for node in self.nxg.nodes_iter():
+                if node[1] == sym:
+                    if len(self.nxg.successors(node)) == 1:
+                        removed_nodes += [node]
+                        self.nxg.add_edge(self.nxg.predecessors(node)[0], self.nxg.successors(node)[0])
+                        self.nxg.remove_edge(node, self.nxg.successors(node)[0])
+
+            for node in removed_nodes:
+                self.nxg.remove_node(node)
 
     def _create_node(self, dat):
         self.unique_id += 1

@@ -126,7 +126,7 @@ logging.info("Knowledge base indexed.")
 # Explanation formula
 if args.expf_graph:
     expf = explanation_formula.explanation_formula_t(obs, indexed_kb, args.depth)
-    expf.visualize("/home/naoya-i/public_html/test.dot")
+    expf.visualize("test.dot")
 
     sys.exit()
 
