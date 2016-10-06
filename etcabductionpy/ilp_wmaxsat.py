@@ -60,7 +60,8 @@ class ilp_wmaxsat_solver_t:
             # create cost variable.
             if node[1][0].startswith("etc"):
                 if f.unifiables.has_key(node[1]):
-                    self.cost_vars[node[1]] = self.gm.addVar(vtype=gurobipy.GRB.BINARY, name=repr(node[1]))
+                    if not self.cost_vars.has_key(node[1]):
+                        self.cost_vars[node[1]] = self.gm.addVar(vtype=gurobipy.GRB.BINARY, name=repr(node[1]))
 
                 else:
                     self.cost_vars[node[1]] = self.vars[node]
@@ -75,14 +76,6 @@ class ilp_wmaxsat_solver_t:
 
             elif "v" == node[1]:
                 self._encode_or(f, node)
-
-            elif len(f.nxg.successors(node)) == 0:
-                # leaf node?
-
-                if not node[1][0].startswith("etc"):
-                    # non-abducible is at leaf!
-                    # make it disable.
-                    self.vars[node].setAttr(gurobipy.GRB.Attr.UB, 0.0)
 
         #
         for k, literals in f.unifiables.iteritems():
@@ -126,9 +119,12 @@ class ilp_wmaxsat_solver_t:
 
     def _encode_objective(self, f):
         '''set ILP objective.'''
-        self.gm.setObjective(
-            sum([math.log(lit[-1]) * var
-                for lit, var in self.cost_vars.iteritems()
-                ]),
-                gurobipy.GRB.MAXIMIZE)
+
+        # change to maximization.
+        self.gm.setAttr(gurobipy.GRB.Attr.ModelSense, -1)
+
+        # coefficient is set
+        for li, var in self.cost_vars.iteritems():
+            var.setAttr(gurobipy.GRB.Attr.Obj, math.log(li[-1]))
+
         self.gm.update()

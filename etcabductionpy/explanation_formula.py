@@ -17,37 +17,11 @@ class explanation_formula_t:
         self.unifiables = collections.defaultdict(list)
 
         self.generate(obs, 0, -1)
-        self._clean_up_unifiables()
-        self._shrink()
+        self._shrink_conj()
+        self._shrink_disj()
+        self._scan_unifiables()
 
         # self.unify()
-
-    def _clean_up_unifiables(self):
-        clean_u = {}
-
-        for k, literals in self.unifiables.iteritems():
-            if len(literals) > 1:
-                clean_u[k] = literals
-
-        self.unifiables = clean_u
-
-    def _shrink(self):
-        for sym in ['^', 'v']:
-            removed_nodes = []
-
-            for node in self.nxg.nodes_iter():
-                if node[1] == sym:
-                    if len(self.nxg.successors(node)) == 1:
-                        removed_nodes += [node]
-                        self.nxg.add_edge(self.nxg.predecessors(node)[0], self.nxg.successors(node)[0])
-                        self.nxg.remove_edge(node, self.nxg.successors(node)[0])
-
-            for node in removed_nodes:
-                self.nxg.remove_node(node)
-
-    def _create_node(self, dat):
-        self.unique_id += 1
-        return (self.unique_id, dat)
 
     def generate(self, conj, level, from_id = 0):
         '''Generate an explanation formula for the conjunction F of literals. The formula is encoded as an AND-OR tree (networkx.DiGraph).'''
@@ -76,9 +50,62 @@ class explanation_formula_t:
                 gnid_lit = self._create_node(tuple(literal))
                 self.nxg.add_edge(gnid_conj, gnid_lit)
 
-                # store list of literals with the same predicates.
-                if literal[0].startswith("etc"):
-                    self.unifiables[tuple(literal)] += [gnid_lit]
+    def visualize(self, out):
+        '''Visualize the formula as a DAG.'''
+        gvz = nx.to_agraph(self.nxg)
+        gvz.layout()
+        gvz.draw(out)
+                
+    def _scan_unifiables(self):
+        for node in self.nxg.nodes_iter():
+            # store list of literals with the same predicates.
+            if node[1][0].startswith("etc"):
+                self.unifiables[node[1]] += [node]
+
+    def _shrink_conj(self):
+        removed_nodes = []
+
+        for node in self.nxg.nodes_iter():
+            if node[1] != "^":
+                continue
+
+            # check if there is non-abducible in the conjunction
+            non_abducibles = [suc
+                for suc in self.nxg.successors(node)
+                if len(self.nxg.successors(suc)) == 0 and not suc[1][0].startswith("etc")]
+
+            # remove "^" and its successors.
+            if len(non_abducibles) > 0:
+                removed_nodes += [node]
+                removed_nodes += self.nxg.successors(node)
+                continue
+
+            # for just one successor.
+            if len(self.nxg.successors(node)) == 1:
+                removed_nodes += [node]
+                self.nxg.add_edge(self.nxg.predecessors(node)[0], self.nxg.successors(node)[0])
+
+        for node in removed_nodes:
+            self.nxg.remove_node(node)
+
+    def _shrink_disj(self):
+        removed_nodes = []
+
+        for node in self.nxg.nodes_iter():
+            if node[1] != "v":
+                continue
+
+            # for just one successor.
+            if len(self.nxg.successors(node)) == 1:
+                removed_nodes += [node]
+                self.nxg.add_edge(self.nxg.predecessors(node)[0], self.nxg.successors(node)[0])
+
+        for node in removed_nodes:
+            self.nxg.remove_node(node)
+
+    def _create_node(self, dat):
+        self.unique_id += 1
+        return (self.unique_id, dat)
 
     def unify(self):
         for k, unifiable_literals in self.unifiables.iteritems():
@@ -95,9 +122,3 @@ class explanation_formula_t:
 
                         self.nxg.add_edge(grandpa, gnid_cnj)
                         self.nxg.add_edge(gnid_cnj, gnid_lit)
-
-    def visualize(self, out):
-        '''Visualize the formula as a DAG.'''
-        gvz = nx.to_agraph(self.nxg)
-        gvz.layout()
-        gvz.draw(out)
