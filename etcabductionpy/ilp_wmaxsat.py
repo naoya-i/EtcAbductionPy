@@ -7,6 +7,7 @@ import itertools
 import gurobipy
 import os
 import math
+import networkx as nx
 
 class ilp_wmaxsat_solver_t:
     def __init__(self):
@@ -77,13 +78,23 @@ class ilp_wmaxsat_solver_t:
             elif "v" == node[1]:
                 self._encode_or(f, node)
 
+            elif "<->" == node[1]:
+                self._encode_dimp(f, node)
+
+            # root formula must be satisfied.
+            if len(f.nxg.predecessors(node)) == 0:
+                self.gm.addConstr(self.vars[node] == 1)
+
         #
         for k, literals in f.unifiables.iteritems():
-            self.gm.addConstr(self.cost_vars[k] <= sum([self.vars[node] for node in literals]))
-            self.gm.addConstr(sum([self.vars[node] for node in literals]) <= len(literals)*self.cost_vars[k])
+            if k[0].startswith("etc"):
+                self.gm.addConstr(self.cost_vars[k] <= sum([self.vars[node] for node in literals]))
+                self.gm.addConstr(sum([self.vars[node] for node in literals]) <= len(literals)*self.cost_vars[k])
 
-        # the given formula must be satisfied.
-        self.gm.addConstr(self.vars[(1, "^")] >= 1)
+            else:
+                for l1, l2 in itertools.combinations(literals, 2):
+                    self.gm.addConstr(self.vars[l1] == self.vars[l2])
+
         self.gm.update()
 
     def _encode_and(self, f, node):
@@ -123,7 +134,7 @@ class ilp_wmaxsat_solver_t:
         # change to maximization.
         self.gm.setAttr(gurobipy.GRB.Attr.ModelSense, -1)
 
-        # coefficient is set
+        # set coefficients
         for li, var in self.cost_vars.iteritems():
             var.setAttr(gurobipy.GRB.Attr.Obj, math.log(li[-1]))
 

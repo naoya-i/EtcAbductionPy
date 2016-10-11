@@ -8,8 +8,9 @@ import abduction
 import bisect
 import itertools
 import parse
-import explanation_formula
+import formula
 import ilp_wmaxsat
+import ilp_dive
 
 import gurobipy
 import math
@@ -17,25 +18,40 @@ import time
 import logging
 import os
 
+import collections
+
+class stopwatch_t:
+    def __init__(self):
+        self.records = {}
+
+    def start(self):
+        self.time    = time.time()
+
+    def stop(self, name):
+        self.records[name] = time.time() - self.time
+
 def nbest_ilp(obs, kb, indexed_kb, maxdepth, n, verbose = False):
 
-    time_ilp_gen, time_ilp_sol = 0, 0
-    time_start = time.time()
+    sw = stopwatch_t()
 
     logging.info("Generating an explanation formula...")
-    expf = explanation_formula.explanation_formula_t(obs, indexed_kb, maxdepth)
+
+    sw.start()
+    f = formula.explanation_formula_t(obs, indexed_kb, maxdepth)
+    sw.stop("gen_expf")
 
     # create ilp problem.
     logging.info("Converting the WMSAT into ILP...")
+
+    sw.start()
     wms = ilp_wmaxsat.ilp_wmaxsat_solver_t()
-    wms.encode(expf)
+    wms.encode(f)
+    sw.stop("ilpconv")
 
     # output statistics.
     logging.info("[ILP problem]")
     logging.info("  ILP variables: %d" % (len(wms.gm.getVars()), ))
     logging.info("  ILP constraints: %d" % (len(wms.gm.getConstrs()), ))
-
-    time_ilp_gen = time.time() - time_start
 
     if not verbose:
         wms.gm.params.outputFlag = 0
@@ -47,8 +63,8 @@ def nbest_ilp(obs, kb, indexed_kb, maxdepth, n, verbose = False):
     #
     # get k-best solutions.
     logging.info("Solving the WMSAT...")
+    sw.start()
 
-    time_start = time.time()
     sols = []
 
     for sol in wms.find_solutions(n):
@@ -70,8 +86,12 @@ def nbest_ilp(obs, kb, indexed_kb, maxdepth, n, verbose = False):
 
         logging.info("  Got %d-best solution!" % (len(sols)))
 
-    time_ilp_sol = time.time() - time_start
+    sw.stop("ilpsol")
 
-    logging.info("  Inference time: [gen] %.2f, [opt] %.2f" % (time_ilp_gen, time_ilp_sol))
+    logging.info("  Inference time: [gen-expf] %.2f, [gen-ilp] %.2f, [opt] %.2f" % (
+        sw.records["gen_expf"],
+        sw.records["ilpconv"],
+        sw.records["ilpsol"],
+        ))
 
     return sols

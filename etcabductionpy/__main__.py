@@ -11,7 +11,7 @@ import parse
 import etcetera
 import abduction
 import forward
-import explanation_formula
+import formula
 
 import cPickle
 import logging
@@ -125,7 +125,8 @@ logging.info("Knowledge base indexed.")
 
 # Explanation formula
 if args.expf_graph:
-    expf = explanation_formula.explanation_formula_t(obs, indexed_kb, args.depth)
+    expf = formula.explanation_formula_t(obs, indexed_kb, args.depth)
+    expf = formula.clark_completion_t(kb, obs)
     expf.visualize("test.dot")
 
     sys.exit()
