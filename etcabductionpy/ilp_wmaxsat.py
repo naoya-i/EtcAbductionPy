@@ -26,6 +26,8 @@ class ilp_wmaxsat_solver_t:
         self.gm.write(out)
 
     def find_solutions(self, n):
+        self.gm.params.Cutoff = 2.54375757082e-18
+
         '''find n-best solutions. '''
         for i in xrange(n):
 
