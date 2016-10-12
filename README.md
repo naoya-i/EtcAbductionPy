@@ -34,3 +34,4 @@ The use of collections.deque makes S-expression parsing much faster.
 
 * `--ilp` or `-l`: use ILP solver (gurobi) to search the (n-)best solution(s).
 * `--ilp-verbose` or `-lv`: output an ILP solver log.
+* `--expf-graph` or `-expfg`: output graph of explanation formula in dot format.

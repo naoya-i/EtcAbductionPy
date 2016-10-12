@@ -78,7 +78,7 @@ argparser.add_argument('-lv','--ilp-verbose',
 
 argparser.add_argument('-expfg','--expf-graph',
                        action='store_true',
-                       help='Output explanation formula graph.')
+                       help='Output graph of explanation formula in .dot format')
 
 argparser.add_argument('-f', '--forward',
                        action='store_true',
@@ -126,8 +126,7 @@ logging.info("Knowledge base indexed.")
 # Explanation formula
 if args.expf_graph:
     expf = formula.explanation_formula_t(obs, indexed_kb, args.depth)
-    expf = formula.clark_completion_t(kb, obs)
-    expf.visualize("test.dot")
+    expf.visualize(sys.stdout)
 
     sys.exit()
 
