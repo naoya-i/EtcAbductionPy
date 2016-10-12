@@ -26,8 +26,6 @@ class ilp_wmaxsat_solver_t:
         self.gm.write(out)
 
     def find_solutions(self, n):
-        self.gm.params.Cutoff = 2.54375757082e-18
-
         '''find n-best solutions. '''
         for i in xrange(n):
 
@@ -80,9 +78,6 @@ class ilp_wmaxsat_solver_t:
             elif "v" == node[1]:
                 self._encode_or(f, node)
 
-            elif "<->" == node[1]:
-                self._encode_dimp(f, node)
-
             # root formula must be satisfied.
             if len(f.nxg.predecessors(node)) == 0:
                 self.gm.addConstr(self.vars[node] == 1)
@@ -92,10 +87,6 @@ class ilp_wmaxsat_solver_t:
             if k[0].startswith("etc"):
                 self.gm.addConstr(self.cost_vars[k] <= sum([self.vars[node] for node in literals]))
                 self.gm.addConstr(sum([self.vars[node] for node in literals]) <= len(literals)*self.cost_vars[k])
-
-            else:
-                for l1, l2 in itertools.combinations(literals, 2):
-                    self.gm.addConstr(self.vars[l1] == self.vars[l2])
 
         self.gm.update()
 
