@@ -10,7 +10,6 @@ import itertools
 import parse
 import formula
 import ilp_wmaxsat
-import ilp_dive
 
 import gurobipy
 import math
