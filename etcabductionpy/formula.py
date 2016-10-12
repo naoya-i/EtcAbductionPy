@@ -112,12 +112,7 @@ class explanation_formula_t(formula_t):
 
                 # backchain on the literal.
                 for rule in self.ikb[predicate]:
-                    theta = unify.unify(literal, parse.consequent(rule))
-
-                    if theta == None:
-                        continue
-
-                    self.generate(unify.standardize(unify.subst(theta, parse.antecedent(rule))), level+1, gnid_disj)
+                    self.generate(parse.antecedent(rule), level+1, gnid_disj)
 
             else:
                 gnid_lit = self._create_node(tuple(literal))
