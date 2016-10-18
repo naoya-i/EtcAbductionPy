@@ -2,6 +2,7 @@
 # Etcetera Abduction: Probability-ordered logical abduction for kb of definite clauses
 # Andrew S. Gordon
 
+import parse
 import unify
 import abduction
 import bisect
@@ -23,7 +24,7 @@ def etcAbduction(obs, kb, indexed_kb, maxdepth, skolemize = True):
         # check if the solution contains etcetera literals only.
         for hypothesis in hypotheses:
             for literal in hypothesis:
-                if not literal[0].startswith("etc"):
+                if parse.is_etc(literal):
                     break
 
             else:
@@ -58,7 +59,7 @@ def nbest(obs, kb, indexed_kb, maxdepth, n, skolemize = True):
 
         # check if the solution contains etcetera literals only.
         for literal in u:
-            if not literal[0].startswith("etc"):
+            if parse.is_etc(literal):
                 break
 
         else:

@@ -4,15 +4,23 @@ import parse
 
 import itertools
 
+import sys
 import math
 import collections
 import networkx as nx
+import bisect
 
 class formula_t(object):
     def __init__(self):
         self.nxg = nx.DiGraph()
         self.unique_id = 0
         self.unifiables = collections.defaultdict(list)
+
+    def copy(self):
+        f = formula_t()
+        f.nxg = self.nxg.copy()
+        f.unique_id = self.unique_id
+        return f
 
     def _shrink(self):
         self._shrink_conj()
@@ -42,26 +50,26 @@ class formula_t(object):
         removed_nodes = []
 
         for node in self.nxg.nodes_iter():
-            if node[1] != "^":
+            if node[1] != "^" or node[0] == 1:
                 continue
 
             # check if there is non-abducible in the conjunction
             non_abducibles = [suc
                 for suc in self.nxg.successors(node)
-                if len(self.nxg.successors(suc)) == 0 and not suc[1][0].startswith("etc")]
+                if len(self.nxg.successors(suc)) == 0 and not parse.is_etc(suc[1])]
 
             # remove "^" and its successors.
             if len(non_abducibles) > 0:
                 removed_nodes += [node]
-                removed_nodes += self.nxg.successors(node)
+                removed_nodes += nx.descendants(self.nxg, node)
                 continue
 
             # for just one successor.
-            if len(self.nxg.successors(node)) == 1:
-                removed_nodes += [node]
-                self.nxg.add_edge(self.nxg.predecessors(node)[0], self.nxg.successors(node)[0])
+            # if len(self.nxg.successors(node)) == 1:
+            #     removed_nodes += [node]
+            #     self.nxg.add_edge(self.nxg.predecessors(node)[0], self.nxg.successors(node)[0])
 
-        for node in removed_nodes:
+        for node in set(removed_nodes):
             self.nxg.remove_node(node)
 
     def _shrink_disj(self):
@@ -72,9 +80,12 @@ class formula_t(object):
                 continue
 
             # for just one successor.
-            if len(self.nxg.successors(node)) == 1:
-                removed_nodes += [node]
-                self.nxg.add_edge(self.nxg.predecessors(node)[0], self.nxg.successors(node)[0])
+            # if len(self.nxg.successors(node)) == 1:
+            #     removed_nodes += [node]
+            #     self.nxg.add_edge(self.nxg.predecessors(node)[0], self.nxg.successors(node)[0])
+            #
+            # if len(self.nxg.successors(node)) == 0:
+            #     removed_nodes += [node]
 
         for node in removed_nodes:
             self.nxg.remove_node(node)
@@ -90,13 +101,13 @@ class explanation_formula_t(formula_t):
 
         self.ikb = ikb
         self.maxdepth = maxdepth
-        self.generate(obs, 0, -1)
+        self.generate(obs, 0)
 
         self._shrink()
         self._scan_unifiables()
         # self.unify()
 
-    def generate(self, conj, level, from_id = 0):
+    def generate(self, conj, level, from_id = -1):
         '''Generate an explanation formula for the conjunction F of literals. The formula is encoded as an AND-OR tree (networkx.DiGraph).'''
         gnid_conj  = self._create_node("^")
 
@@ -106,7 +117,7 @@ class explanation_formula_t(formula_t):
         for literal in conj:
             predicate = literal[0]
 
-            if level < self.maxdepth and predicate in self.ikb:
+            if (level < self.maxdepth) and (predicate in self.ikb):
                 gnid_disj = self._create_node("v")
                 self.nxg.add_edge(gnid_conj, gnid_disj)
 
@@ -115,5 +126,8 @@ class explanation_formula_t(formula_t):
                     self.generate(parse.antecedent(rule), level+1, gnid_disj)
 
             else:
+                if -1 == from_id:
+                    continue
+
                 gnid_lit = self._create_node(tuple(literal))
                 self.nxg.add_edge(gnid_conj, gnid_lit)

@@ -13,7 +13,7 @@ import abduction
 import forward
 import formula
 
-import cPickle
+import cPickle, pickle
 import logging
 
 argparser = argparse.ArgumentParser(description='Etcetera Abduction in Python')
@@ -72,6 +72,14 @@ argparser.add_argument('-l', '--ilp',
                        action='store_true',
                        help='Use ILP solver to get solution(s)')
 
+argparser.add_argument('-aos', '--aostar-search',
+                       action='store_true',
+                       help='Use AO* search to get solution(s)')
+
+argparser.add_argument('-aosg','--aostar-graph',
+                       action='store_true',
+                       help='Output graph of AO* solutions in .dot format')
+
 argparser.add_argument('-lv','--ilp-verbose',
                        action='store_true',
                        help='Output ILP solver log')
@@ -120,7 +128,7 @@ if args.kbpickle:
 
     logging.info("Knowledge base loaded.")
 
-indexed_kb = abduction.index_by_consequent_predicate(kb)
+indexed_kb = abduction.index_by_consequent_predicate(kb, obs)
 logging.info("Knowledge base indexed.")
 
 # Explanation formula
@@ -154,6 +162,13 @@ else:
         # import may take a while.
         time_start = time.time()
         solutions = etcetera_ilp.nbest_ilp(obs, kb, indexed_kb, args.depth, args.nbest, args.ilp_verbose)
+
+    elif args.aostar_search:
+        import etcetera_search
+
+        # import may take a while.
+        time_start = time.time()
+        solutions = etcetera_search.nbest_aostar(obs, kb, indexed_kb, args.depth, args.nbest, args.aostar_graph)
 
     else:
         solutions = etcetera.nbest(obs, kb, indexed_kb, args.depth, args.nbest)

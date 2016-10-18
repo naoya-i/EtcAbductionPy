@@ -158,6 +158,8 @@ def display(sexp):
     else:
         return str(sexp)
 
+def is_etc(l):
+    return l[0].startswith("etc") and isinstance(l[-1], float)
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description='Parse lisp-style input files into definite clause s-expressions')

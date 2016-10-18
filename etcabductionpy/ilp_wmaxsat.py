@@ -2,6 +2,8 @@
 #  Integer Linear Programming implementation of Weighted Max Sat Solver.
 # Naoya Inoue
 
+import parse
+
 import itertools
 
 import gurobipy
@@ -59,7 +61,7 @@ class ilp_wmaxsat_solver_t:
             self.vars[node] = self.gm.addVar(vtype=gurobipy.GRB.BINARY, name=repr(node))
 
             # create cost variable.
-            if node[1][0].startswith("etc"):
+            if parse.is_etc(node[1]):
                 if f.unifiables.has_key(node[1]):
                     if not self.cost_vars.has_key(node[1]):
                         self.cost_vars[node[1]] = self.gm.addVar(vtype=gurobipy.GRB.BINARY, name=repr(node[1]))
@@ -84,7 +86,7 @@ class ilp_wmaxsat_solver_t:
 
         #
         for k, literals in f.unifiables.iteritems():
-            if k[0].startswith("etc"):
+            if parse.is_etc(k):
                 self.gm.addConstr(self.cost_vars[k] <= sum([self.vars[node] for node in literals]))
                 self.gm.addConstr(sum([self.vars[node] for node in literals]) <= len(literals)*self.cost_vars[k])
 
