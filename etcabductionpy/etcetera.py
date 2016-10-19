@@ -24,7 +24,7 @@ def etcAbduction(obs, kb, indexed_kb, maxdepth, skolemize = True):
         # check if the solution contains etcetera literals only.
         for hypothesis in hypotheses:
             for literal in hypothesis:
-                if parse.is_etc(literal):
+                if not parse.is_etc(literal):
                     break
 
             else:
@@ -59,7 +59,7 @@ def nbest(obs, kb, indexed_kb, maxdepth, n, skolemize = True):
 
         # check if the solution contains etcetera literals only.
         for literal in u:
-            if parse.is_etc(literal):
+            if not parse.is_etc(literal):
                 break
 
         else:
