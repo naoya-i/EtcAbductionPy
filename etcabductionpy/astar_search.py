@@ -99,9 +99,9 @@ class astar_searcher_t():
             if len(f.nxg.successors(node)) > 0 or parse.is_etc(node[1]):
                 continue
 
-            hf = heuristic_function_t(self._estimate_cost_node(node[1], f.levels[node]), assumed_etc)
+            hf = self._estimate_cost_node(node[1], f.levels[node])
 
-            est_h += hf.reduce()
+            est_h += hf(assumed_etc) # hf.reduce()
             #assumed_etc.update(hf.enumetc())
 
         # f(E) = g(E) + h(E)
@@ -146,42 +146,47 @@ class astar_searcher_t():
     def _estimate_cost_node(self, literal, depth):
         predicate = literal[0]
 
-        ret = (tuple(literal), -10000) # Meaning zero prob.
+        ret = _hf_const(-10000) # Meaning zero prob.
 
         if self.cache.has_key((predicate, depth, )):
             return self.cache[(predicate, depth, )]
 
         if parse.is_etc(literal):
-            ret = (tuple(literal), math.log(literal[-1]))
+            ret = _hf_var(lambda m: math.log(literal[-1]) if tuple(literal) not in m else 0.0)
 
         else:
 
             # try backchaining on the literal.
             if depth < self.maxdepth and predicate in self.ikb:
-                costs = [0] # operator "OR"
+                costs = []
 
                 for rule in self.ikb[predicate]:
-                    local_cost = [1] # operator "AND"
+                    local_cost = []
 
                     for lit in parse.antecedent(rule):
                         local_cost += [self._estimate_cost_node(lit, depth+1)]
 
-                    # reduction.
-                    if len(local_cost) == 2:
-                        local_cost = local_cost[1]
+                    # lambdaize.
+                    if len(local_cost) > 1:
+                        local_cost = _hf_latesum(local_cost)
+
+                    else:
+                        local_cost = _hf_var(local_cost[0])
 
                     costs += [local_cost]
 
-                # reduction.
-                if len(costs) == 2:
-                    costs = costs[1]
+                # lambdaize.
+                if len(costs) > 1:
+                    costs = _hf_latemax(costs)
+
+                else:
+                    costs = _hf_var(costs[0])
 
                 ret = costs
 
         self.cache[(predicate, depth, )] = ret
 
         return ret
-
 
 class candidate_t:
     def __init__(self, score, formula):
@@ -190,39 +195,18 @@ class candidate_t:
     def __lt__(self, other):
         return self.score < other.score
 
-class heuristic_function_t:
-    def __init__(self, func, assumed_etc):
-        self.func = func
-        self.assumed_etc = assumed_etc
-        self.max_path_etcs = []
+# function object for constructing heuristic function.
+def _hf_latesum(ar):
+    return lambda m: sum([c(m) for c in ar])
 
-    def reduce(self, x = None):
-        if None == x:
-            x = self.func
-            self.max_path_etcs = []
+def _hf_latemax(ar):
+    return lambda m: max([c(m) for c in ar])
 
-        if isinstance(x, tuple):
-            self.max_path_etcs += [x[0]]
-            return 0.0 if x[0] in self.assumed_etc else x[1]
-        elif x[0] == 0:
-            return max([self.reduce(y) for y in x[1:]])
-        elif x[0] == 1:
-            return sum([self.reduce(y) for y in x[1:]])
+def _hf_var(c):
+    return lambda m: c(m)
 
-    def enumetc(self, lst = None):
-        if None == lst:
-            lst = self.func
-
-        if isinstance(lst, tuple):
-            yield lst
-        else:
-            for x in lst[1:]:
-                if isinstance(x, tuple):
-                    if parse.is_etc(x[0]):
-                        yield x[0]
-                else:
-                    for y in self.enumetc(x):
-                        yield y
+def _hf_const(c):
+    return lambda m: c
 
 class NoExpansionException(Exception): pass
 class SolvedException(Exception):      pass
