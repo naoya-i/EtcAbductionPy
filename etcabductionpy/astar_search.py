@@ -11,7 +11,7 @@ import itertools
 import logging
 import collections
 
-class aostar_searcher_t():
+class astar_searcher_t():
     def __init__(self, ikb, maxdepth, nbest, graph):
         self.ikb = ikb
         self.maxdepth = maxdepth
@@ -102,7 +102,7 @@ class aostar_searcher_t():
             hf = heuristic_function_t(self._estimate_cost_node(node[1], f.levels[node]), assumed_etc)
 
             est_h += hf.reduce()
-            assumed_etc.update(hf.enumetc())
+            #assumed_etc.update(hf.enumetc())
 
         # f(E) = g(E) + h(E)
         return est_g + est_h
@@ -194,12 +194,15 @@ class heuristic_function_t:
     def __init__(self, func, assumed_etc):
         self.func = func
         self.assumed_etc = assumed_etc
+        self.max_path_etcs = []
 
     def reduce(self, x = None):
         if None == x:
             x = self.func
+            self.max_path_etcs = []
 
         if isinstance(x, tuple):
+            self.max_path_etcs += [x[0]]
             return 0.0 if x[0] in self.assumed_etc else x[1]
         elif x[0] == 0:
             return max([self.reduce(y) for y in x[1:]])

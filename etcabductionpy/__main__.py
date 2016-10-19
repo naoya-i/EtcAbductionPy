@@ -72,11 +72,11 @@ argparser.add_argument('-l', '--ilp',
                        action='store_true',
                        help='Use ILP solver to get solution(s)')
 
-argparser.add_argument('-aos', '--aostar-search',
+argparser.add_argument('-as', '--astar-search',
                        action='store_true',
                        help='Use AO* search to get solution(s)')
 
-argparser.add_argument('-aosg','--aostar-graph',
+argparser.add_argument('-asg','--astar-graph',
                        action='store_true',
                        help='Output graph of AO* solutions in .dot format')
 
@@ -163,12 +163,12 @@ else:
         time_start = time.time()
         solutions = etcetera_ilp.nbest_ilp(obs, kb, indexed_kb, args.depth, args.nbest, args.ilp_verbose)
 
-    elif args.aostar_search:
+    elif args.astar_search:
         import etcetera_search
 
         # import may take a while.
         time_start = time.time()
-        solutions = etcetera_search.nbest_aostar(obs, kb, indexed_kb, args.depth, args.nbest, args.aostar_graph)
+        solutions = etcetera_search.nbest_astar(obs, kb, indexed_kb, args.depth, args.nbest, args.astar_graph)
 
     else:
         solutions = etcetera.nbest(obs, kb, indexed_kb, args.depth, args.nbest)
