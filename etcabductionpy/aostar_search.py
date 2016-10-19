@@ -19,6 +19,8 @@ class aostar_searcher_t():
         self.graph = graph
         self.cache = {}
 
+        self.num_expanded = 0
+
     def search(self, conj, level = 0, from_id = 0):
         open_list = []
 
@@ -31,10 +33,10 @@ class aostar_searcher_t():
             f.nxg.add_edge(gnid_cnj, gnid_lit)
 
         open_list += [candidate_t(self.estimate_cost(f), f)]
-        num_sol    = 0
+        sols       = []
 
         # start the search.
-        while len(open_list) > 0 and num_sol < self.nbest:
+        while len(open_list) > 0 and len(sols) < self.nbest:
             op = open_list.pop()
 
             try:
@@ -44,6 +46,7 @@ class aostar_searcher_t():
                         continue
 
                     bisect.insort_left(open_list, candidate_t(score, f))
+                    self.num_expanded += 1
 
             except SolvedException:
                 # oh, the popped graph is already solved one.
@@ -54,8 +57,7 @@ class aostar_searcher_t():
                     continue
 
                 yield list(sol)
-
-                num_sol += 1
+                sols += [sol]
 
                 # output the graph.
                 if self.graph:

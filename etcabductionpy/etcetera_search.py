@@ -44,5 +44,8 @@ def nbest_aostar(obs, kb, indexed_kb, maxdepth, n, graph = False):
     logging.info("  Inference time: %.2f" % (
         sw.records["search"],
         ))
+    logging.info("  # expanded: %d" % (
+        s.num_expanded,
+        ))
 
     return sols
