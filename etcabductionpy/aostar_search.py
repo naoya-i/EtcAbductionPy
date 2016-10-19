@@ -22,6 +22,7 @@ class aostar_searcher_t():
     def search(self, conj, level = 0, from_id = 0):
         open_list = []
 
+        # add observation as a start state.
         f = formula.formula_t()
         gnid_cnj = f._create_node("^")
 
@@ -30,12 +31,14 @@ class aostar_searcher_t():
             f.nxg.add_edge(gnid_cnj, gnid_lit)
 
         open_list += [candidate_t(self.estimate_cost(f), f)]
-        sols       = []
+        num_sol    = 0
 
-        while len(open_list) > 0 and len(sols) < self.nbest:
+        # start the search.
+        while len(open_list) > 0 and num_sol < self.nbest:
             op = open_list.pop()
 
             try:
+                # expand and add to the priority queue.
                 for score, f in self.expand(op.formula):
                     if score <= -10000:
                         continue
@@ -43,15 +46,18 @@ class aostar_searcher_t():
                     bisect.insort_left(open_list, candidate_t(score, f))
 
             except SolvedException:
+                # oh, the popped graph is already solved one.
                 sol = frozenset([n[1] for n in op.formula.nxg.nodes() if parse.is_etc(n[1])])
 
+                # to avoid redundant output.
                 if sol in set(sols):
                     continue
 
-                sols += [sol]
-
                 yield list(sol)
 
+                num_sol += 1
+
+                # output the graph.
                 if self.graph:
                     op.formula.visualize(sys.stdout)
 
@@ -59,6 +65,47 @@ class aostar_searcher_t():
                 pass
 
     def expand(self, f):
+        expansions = self._obtain_all_possible_expansions(f)
+
+        # take a cartesian product of them.
+        for exp in itertools.product(*expansions.values()):
+            f_new = f.copy()
+
+            for node, expansion in exp:
+                for lit in expansion:
+                    gnid_lit = f_new._create_node(tuple(lit), f.levels[node]+1)
+                    f_new.nxg.add_edge(node, gnid_lit)
+
+            yield self.estimate_cost(f_new), f_new
+
+    def estimate_cost(self, f):
+        assumed_etc = set()
+
+        # g(E): sum of all resolved etc literals.
+        est_g = 0.0
+
+        for node in f.nxg.nodes_iter():
+            if len(f.nxg.successors(node)) == 0 and parse.is_etc(node[1]):
+                assumed_etc.add(tuple(node[1]))
+
+        est_g += sum([math.log(p) for l, p in assumed_etc])
+
+        # h(E): maximum score among all possible paths!
+        est_h = 0.0
+
+        for node in f.nxg.nodes_iter():
+            if len(f.nxg.successors(node)) > 0 or parse.is_etc(node[1]):
+                continue
+
+            hf = heuristic_function_t(self._estimate_cost_node(node[1], f.levels[node]), assumed_etc)
+
+            est_h += hf.reduce()
+            assumed_etc.update(hf.enumetc())
+
+        # f(E) = g(E) + h(E)
+        return est_g + est_h
+
+    def _obtain_all_possible_expansions(self, f):
         expansions = collections.defaultdict(list)
         solved = True
 
@@ -84,21 +131,15 @@ class aostar_searcher_t():
 
                     expansions[node] += [(node, parse.antecedent(rule))]
 
+        # already solved?
         if solved:
             raise SolvedException
 
+        # no expansion?
         if len(expansions) == 0:
             raise NoExpansionException
 
-        for exp in itertools.product(*expansions.values()):
-            f_new = f.copy()
-
-            for node, expansion in exp:
-                for lit in expansion:
-                    gnid_lit = f_new._create_node(tuple(lit), f.levels[node]+1)
-                    f_new.nxg.add_edge(node, gnid_lit)
-
-            yield self.estimate_cost(f_new), f_new
+        return expansions
 
     def _estimate_cost_node(self, literal, depth):
         predicate = literal[0]
@@ -139,31 +180,6 @@ class aostar_searcher_t():
 
         return ret
 
-    def estimate_cost(self, f):
-        assumed_etc = set()
-
-        # g(E): sum of all resolved etc literals.
-        est_g = 0
-
-        for node in f.nxg.nodes_iter():
-            if len(f.nxg.successors(node)) == 0 and parse.is_etc(node[1]):
-                assumed_etc.add(tuple(node[1]))
-
-        est_g += sum([math.log(p) for l, p in assumed_etc])
-
-        # h(E): maximum score among all possible paths!
-        est_h = 0.0
-
-        for node in f.nxg.nodes_iter():
-            if len(f.nxg.successors(node)) > 0 or parse.is_etc(node[1]):
-                continue
-
-            hf = heuristic_function_t(self._estimate_cost_node(node[1], f.levels[node]), assumed_etc)
-
-            est_h += hf.reduce()
-            assumed_etc.update(hf.enumetc())
-
-        return est_g + est_h
 
 class candidate_t:
     def __init__(self, score, formula):
