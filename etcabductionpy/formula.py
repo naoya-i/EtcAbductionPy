@@ -14,11 +14,13 @@ class formula_t(object):
     def __init__(self):
         self.nxg = nx.DiGraph()
         self.unique_id = 0
+        self.levels = {}
         self.unifiables = collections.defaultdict(list)
 
     def copy(self):
         f = formula_t()
         f.nxg = self.nxg.copy()
+        f.levels = self.levels.copy()
         f.unique_id = self.unique_id
         return f
 
@@ -53,17 +55,6 @@ class formula_t(object):
             if node[1] != "^" or node[0] == 1:
                 continue
 
-            # check if there is non-abducible in the conjunction
-            non_abducibles = [suc
-                for suc in self.nxg.successors(node)
-                if len(self.nxg.successors(suc)) == 0 and not parse.is_etc(suc[1])]
-
-            # remove "^" and its successors.
-            if len(non_abducibles) > 0:
-                removed_nodes += [node]
-                removed_nodes += nx.descendants(self.nxg, node)
-                continue
-
             # for just one successor.
             # if len(self.nxg.successors(node)) == 1:
             #     removed_nodes += [node]
@@ -84,14 +75,13 @@ class formula_t(object):
             #     removed_nodes += [node]
             #     self.nxg.add_edge(self.nxg.predecessors(node)[0], self.nxg.successors(node)[0])
             #
-            # if len(self.nxg.successors(node)) == 0:
-            #     removed_nodes += [node]
 
         for node in removed_nodes:
             self.nxg.remove_node(node)
 
-    def _create_node(self, dat):
+    def _create_node(self, dat, level = 0):
         self.unique_id += 1
+        self.levels[(self.unique_id, dat)] = level
         return (self.unique_id, dat)
 
 

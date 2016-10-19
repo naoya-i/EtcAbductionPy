@@ -153,13 +153,13 @@ def variablize(sexp):
         return res
 
 def display(sexp):
-    if isinstance(sexp, list):
+    if isinstance(sexp, list) or isinstance(sexp, tuple):
         return "(" + " ".join([display(s) for s in sexp]) + ")"
     else:
         return str(sexp)
 
 def is_etc(l):
-    return l[0].startswith("etc") and isinstance(l[-1], float)
+    return isinstance(l[-1], float) and isinstance(l[0], basestring) and l[0].startswith("etc")
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description='Parse lisp-style input files into definite clause s-expressions')

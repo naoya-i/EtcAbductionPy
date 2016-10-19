@@ -58,7 +58,12 @@ class ilp_wmaxsat_solver_t:
     def _encode_variables(self, f):
         # create one ILP variable for each node.
         for node in f.nxg.nodes_iter():
-            self.vars[node] = self.gm.addVar(vtype=gurobipy.GRB.BINARY, name=repr(node))
+            _ub = 1.0
+
+            # if it is non abducible, ...
+            if not (parse.is_etc(node[1]) or node[1] in ["^", "v"]): _ub = 0.0
+
+            self.vars[node] = self.gm.addVar(vtype=gurobipy.GRB.BINARY, name=repr(node), ub=_ub)
 
             # create cost variable.
             if parse.is_etc(node[1]):

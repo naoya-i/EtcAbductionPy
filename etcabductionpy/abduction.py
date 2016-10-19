@@ -44,8 +44,8 @@ def index_by_consequent_predicate(kb, obs, everything_assumable = False):
             if parse.is_etc(l):
                 lowest_prior = min(lowest_prior, l[-1])
 
-            if everything_assumable:
-                if not parse.is_etc(l):
+            else:
+                if everything_assumable:
                     L[l[0]] += 0
 
     lowest_prior *= 0.1
