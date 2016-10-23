@@ -40,14 +40,24 @@ def nbest_ilp(obs, kb, indexed_kb, maxdepth, n, verbose = False):
     f.derive(obs)
     sw.stop("gen_expf")
 
-    logging.info(" lower bound: %f" % math.exp(f.lower_bound))
+    logging.info(" Lower bound prob.: %f" % math.exp(f.lower_bound_logprob))
+
+    logging.info(" Obtaining lower bound hypothesis...")
+    lower_h = f.traverse_lower_bound()
 
     # create ilp problem.
     logging.info("Converting the WMSAT into ILP...")
 
     sw.start()
     wms = ilp_wmaxsat.ilp_wmaxsat_solver_t()
-    wms.encode(f)
+
+    if not verbose:
+        wms.gm.params.outputFlag = 0
+
+    else:
+        wms.gm.params.outputFlag = 1
+
+    wms.encode(f, lower_h)
     sw.stop("ilpconv")
 
     # output statistics.
@@ -55,11 +65,7 @@ def nbest_ilp(obs, kb, indexed_kb, maxdepth, n, verbose = False):
     logging.info("  ILP variables: %d" % (len(wms.gm.getVars()), ))
     logging.info("  ILP constraints: %d" % (len(wms.gm.getConstrs()), ))
 
-    if not verbose:
-        wms.gm.params.outputFlag = 0
-
-    else:
-        wms.gm.params.outputFlag = 1
+    if verbose:
         wms.write_lp("test.lp")
 
     #

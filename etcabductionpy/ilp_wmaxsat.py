@@ -19,7 +19,7 @@ class ilp_wmaxsat_solver_t:
         self.vars = {}
         self.cost_vars = {}
 
-    def encode(self, f):
+    def encode(self, f, initial_h = []):
         '''Encode the WMAXSAT problem of f as an ILP problem.'''
         logging.info("  Variables...")
         self._encode_variables(f)
@@ -28,7 +28,7 @@ class ilp_wmaxsat_solver_t:
         self._encode_constraints(f)
 
         logging.info("  Objective...")
-        self._encode_objective(f)
+        self._encode_objective(f, initial_h)
 
     def write_lp(self, out):
         '''Write the encoded problem into a file.'''
@@ -144,15 +144,20 @@ class ilp_wmaxsat_solver_t:
             # or self.gm.addConstr(gurobipy.quicksum(xvars) <= 1)
         '''
 
-    def _encode_objective(self, f):
+    def _encode_objective(self, f, initial_h = []):
         '''set ILP objective.'''
 
         # change to maximization.
         self.gm.setAttr(gurobipy.GRB.Attr.ModelSense, -1)
-        self.gm.params.Cutoff = f.lower_bound - self.gm.params.FeasibilityTol
+        self.gm.params.Cutoff = f.lower_bound_logprob - self.gm.params.FeasibilityTol
 
         # set coefficients
         for li, var in self.cost_vars.iteritems():
             var.setAttr(gurobipy.GRB.Attr.Obj, math.log(li[-1]))
+
+        # set initial solution
+        for node in initial_h:
+            self.vars[node].start = 1.0
+            self.cost_vars[node[1]].start = 1.0
 
         self.gm.update()
