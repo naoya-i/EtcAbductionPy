@@ -74,7 +74,7 @@ argparser.add_argument('-l', '--ilp',
 
 argparser.add_argument('-as', '--astar-search',
                        action='store_true',
-                       help='Use AO* search to get solution(s)')
+                       help='Use A* search to get solution(s)')
 
 argparser.add_argument('-asg','--astar-graph',
                        action='store_true',
@@ -133,7 +133,8 @@ logging.info("Knowledge base indexed.")
 
 # Explanation formula
 if args.expf_graph:
-    expf = formula.explanation_formula_t(obs, indexed_kb, args.depth)
+    expf = formula.explanation_formula_t(indexed_kb, args.depth)
+    expf.derive(obs)
     expf.visualize(sys.stdout)
 
     sys.exit()
@@ -166,7 +167,6 @@ else:
     elif args.astar_search:
         import etcetera_search
 
-        # import may take a while.
         time_start = time.time()
         solutions = etcetera_search.nbest_astar(obs, kb, indexed_kb, args.depth, args.nbest, args.astar_graph)
 

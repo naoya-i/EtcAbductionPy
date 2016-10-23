@@ -4,6 +4,7 @@
 # Naoya Inoue
 
 import astar_search
+import u_search
 import itertools
 
 import math
@@ -27,6 +28,7 @@ def nbest_astar(obs, kb, indexed_kb, maxdepth, n, graph = False):
 
     sw = stopwatch_t()
     s  = astar_search.astar_searcher_t(indexed_kb,  maxdepth, n, graph)
+    #s  = u_search.u_searcher_t(indexed_kb,  maxdepth, n, graph)
     logging.info("Searching...")
 
     sw.start()
@@ -44,8 +46,9 @@ def nbest_astar(obs, kb, indexed_kb, maxdepth, n, graph = False):
     logging.info("  Inference time: %.2f" % (
         sw.records["search"],
         ))
-    logging.info("  # expanded: %d" % (
+    logging.info("  # expanded: %d, # popped: %d" % (
         s.num_expanded,
+        s.num_popped,
         ))
 
     return sols

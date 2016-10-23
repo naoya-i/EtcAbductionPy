@@ -36,8 +36,11 @@ def nbest_ilp(obs, kb, indexed_kb, maxdepth, n, verbose = False):
     logging.info("Generating an explanation formula...")
 
     sw.start()
-    f = formula.explanation_formula_t(obs, indexed_kb, maxdepth)
+    f = formula.explanation_formula_t(indexed_kb, maxdepth)
+    f.derive(obs)
     sw.stop("gen_expf")
+
+    logging.info(" lower bound: %f" % math.exp(f.lower_bound))
 
     # create ilp problem.
     logging.info("Converting the WMSAT into ILP...")

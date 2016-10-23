@@ -17,20 +17,20 @@ class astar_searcher_t():
         self.maxdepth = maxdepth
         self.nbest = nbest
         self.graph = graph
+        self.hop = maxdepth-2
         self.cache = {}
 
         self.num_expanded = 0
+        self.num_popped   = 0
 
     def search(self, conj, level = 0, from_id = 0):
         open_list = []
 
         # add observation as a start state.
-        f = formula.formula_t()
-        gnid_cnj = f._create_node("^")
+        f = []
 
         for literal in conj:
-            gnid_lit = f._create_node(tuple(literal))
-            f.nxg.add_edge(gnid_cnj, gnid_lit)
+            f += [(0, 0, tuple(literal))]
 
         open_list += [candidate_t(self.estimate_cost(f), f)]
         sols       = []
@@ -38,19 +38,30 @@ class astar_searcher_t():
         # start the search.
         while len(open_list) > 0 and len(sols) < self.nbest:
             op = open_list.pop()
+            self.num_popped += 1
 
             try:
                 # expand and add to the priority queue.
+                num_expansion = 0
+                logging.info("Expanding...")
+
                 for score, f in self.expand(op.formula):
                     if score <= -10000:
                         continue
 
                     bisect.insort_left(open_list, candidate_t(score, f))
-                    self.num_expanded += 1
+                    num_expansion += 1
+
+                logging.info("Whew... %d expansion." % num_expansion)
+                self.num_expanded += num_expansion
+
+                # output the graph.
+                if self.graph:
+                    op.formula.visualize(sys.stdout)
 
             except SolvedException:
                 # oh, the popped graph is already solved one.
-                sol = frozenset([n[1] for n in op.formula.nxg.nodes() if parse.is_etc(n[1])])
+                sol = frozenset([lit for t, lv, lit in op.formula if parse.is_etc(lit)])
 
                 # to avoid redundant output.
                 if sol in set(sols):
@@ -69,40 +80,65 @@ class astar_searcher_t():
     def expand(self, f):
         expansions = self._obtain_all_possible_expansions(f)
 
+        # change the estimation strategy.
+        self.hop = self.maxdepth+1
+
         # take a cartesian product of them.
         for exp in itertools.product(*expansions.values()):
-            f_new = f.copy()
+            f_new = list(f)
 
             for node, expansion in exp:
+                i, t, lv, node = node
+
+                # mark the node as closed node.
+                f_new[i] = (1, lv, node)
+
+                # add expanded literals.
                 for lit in expansion:
-                    gnid_lit = f_new._create_node(tuple(lit), f.levels[node]+1)
-                    f_new.nxg.add_edge(node, gnid_lit)
+                    f_new += [(0, lv+1, tuple(lit))]
 
             yield self.estimate_cost(f_new), f_new
 
     def estimate_cost(self, f):
         assumed_etc = set()
+        fixed_etc   = set()
+        estimated_etc_count = collections.defaultdict(int)
 
         # g(E): sum of all resolved etc literals.
         est_g = 0.0
+        open_nodes = []
 
-        for node in f.nxg.nodes_iter():
-            if len(f.nxg.successors(node)) == 0 and parse.is_etc(node[1]):
-                assumed_etc.add(tuple(node[1]))
+        for t, lv, node in f:
 
-        est_g += sum([math.log(p) for l, p in assumed_etc])
+            # looking for leaf nodes.
+            if parse.is_etc(node):
+                fixed_etc.add(node)
+                estimated_etc_count[node] += 1
+
+            elif t == 0:
+                open_nodes += [node]
+
+                for l in self._enum_etcs(node, lv):
+                    estimated_etc_count[l] += 1
+
+        est_g += sum([math.log(p) for l, p in fixed_etc])
 
         # h(E): maximum score among all possible paths!
         est_h = 0.0
 
-        for node in f.nxg.nodes_iter():
-            if len(f.nxg.successors(node)) > 0 or parse.is_etc(node[1]):
-                continue
+        estimated_assumed_etc = set([l for l, c in estimated_etc_count.iteritems() if c >= 2])
+        assumed_etc = fixed_etc | estimated_assumed_etc
 
-            hf = self._estimate_cost_node(node[1], f.levels[node])
+        for node in open_nodes:
+            hf = self._estimate_cost_node(node, lv)
+            est_h += hf((assumed_etc, 1.0))
 
-            est_h += hf(assumed_etc) # hf.reduce()
-            #assumed_etc.update(hf.enumetc())
+        # i'm still not sure the below tight bound makes sense or not.
+        if len(estimated_assumed_etc) > 0:
+            lowest_etc = max(estimated_assumed_etc, key=lambda e: e[-1])
+
+            if lowest_etc not in fixed_etc:
+                est_h += math.log(lowest_etc[-1])
 
         # f(E) = g(E) + h(E)
         return est_g + est_h
@@ -112,10 +148,11 @@ class astar_searcher_t():
         solved = True
 
         # search for possibility on expansion.
-        for node in f.nxg.nodes_iter():
-            predicate = node[1][0]
+        for i, node in enumerate(f):
+            t, lv, node = node
+            predicate = node[0]
 
-            if len(f.nxg.successors(node)) > 0 or parse.is_etc(node[1]):
+            if t != 0 or parse.is_etc(node):
                 continue
 
             # non-etc, leaf node.
@@ -127,11 +164,11 @@ class astar_searcher_t():
                 for rule in self.ikb[predicate]:
 
                     # do not expand beyond the max depth.
-                    if f.levels[node] == self.maxdepth - 1:
+                    if lv == self.maxdepth - 1:
                         if len([l for l in parse.antecedent(rule) if not parse.is_etc(l)]) > 0:
                             continue
 
-                    expansions[node] += [(node, parse.antecedent(rule))]
+                    expansions[i] += [((i, t, lv, node), parse.antecedent(rule))]
 
         # already solved?
         if solved:
@@ -143,7 +180,30 @@ class astar_searcher_t():
 
         return expansions
 
-    def _estimate_cost_node(self, literal, depth):
+    def _enum_etcs(self, literal, depth):
+        literal   = tuple(literal)
+        predicate = literal[0]
+
+        if parse.is_etc(literal):
+            return [literal]
+
+        else:
+
+            if not self.cache.has_key((1008, literal, depth)):
+                # try backchaining on the literal.
+                literals = []
+
+                if depth < self.maxdepth and predicate in self.ikb:
+                    for rule in self.ikb[predicate]:
+                        for lit in parse.antecedent(rule):
+                            literals.extend(self._enum_etcs(lit, depth+1))
+
+                self.cache[(1008, literal, depth)] = literals
+
+            return self.cache[(1008, literal, depth)]
+
+
+    def _estimate_cost_node(self, literal, depth, hop = 0):
         predicate = literal[0]
 
         ret = _hf_const(-10000) # Meaning zero prob.
@@ -151,8 +211,11 @@ class astar_searcher_t():
         if self.cache.has_key((predicate, depth, )):
             return self.cache[(predicate, depth, )]
 
+        if hop == self.hop:
+            return _hf_const(0)
+
         if parse.is_etc(literal):
-            ret = _hf_var(lambda m: math.log(literal[-1]) if tuple(literal) not in m else 0.0)
+            ret = _hf_var(lambda m: math.log(literal[-1]) if tuple(literal) not in m[0] else math.log(m[1]))
 
         else:
 
@@ -164,7 +227,7 @@ class astar_searcher_t():
                     local_cost = []
 
                     for lit in parse.antecedent(rule):
-                        local_cost += [self._estimate_cost_node(lit, depth+1)]
+                        local_cost += [self._estimate_cost_node(lit, depth+1, hop+1)]
 
                     # lambdaize.
                     if len(local_cost) > 1:
