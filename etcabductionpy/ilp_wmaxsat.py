@@ -355,8 +355,17 @@ class ilp_wmaxsat_solver_t:
         for cc in nx.connected_components(
             self.formula.unifiable_var_graph.subgraph(nodes)
         ):
-            for v1, v2, v3 in itertools.combinations(cc, 3):
-                self._encode_transitivity(v1, v2, v3, lazy=True)
+            cc = list(cc)
+            n_const = 0
+
+            # only introduce for two-constant cluster.
+            for v in cc:
+                if not unify.variablep(v):
+                    n_const += 1
+
+            if n_const >= 2:
+                for v1, v2, v3 in itertools.combinations(cc, 3):
+                    self._encode_transitivity(v1, v2, v3, lazy=True)
 
     def _encode_objective(self, f, initial_h = []):
         '''set ILP objective.'''
