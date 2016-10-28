@@ -9,15 +9,13 @@ import etcetera
 import itertools
 import sys
 
+import formula
 import gurobipy
 import os
 import logging
 import math
 import collections
 import networkx as nx
-
-def is_opr(x):
-    return x == "^" or x == "v" or x == "<->"
 
 class ilp_wmaxsat_solver_t:
     def __init__(self):
@@ -33,6 +31,8 @@ class ilp_wmaxsat_solver_t:
         self.eq_dep = collections.defaultdict(list)
         self.sol_related_eqs = {}
         self.trans_eq_cache = {}
+
+        self.c0var, self.c1var = None, None
 
         self.formula = None
 
@@ -53,7 +53,7 @@ class ilp_wmaxsat_solver_t:
         '''Write the encoded problem into a file.'''
         self.gm.write(out)
 
-    def find_solutions(self, n):
+    def find_solutions(self, n, denial = 0):
         '''find n-best solutions. '''
         sols = set()
 
@@ -85,13 +85,22 @@ class ilp_wmaxsat_solver_t:
 
             # deny the current sol.
             if len(sols) < n:
-                self.gm.addConstr(gurobipy.quicksum([
-                    var
-                    if var.getAttr(gurobipy.GRB.Attr.X) == 1.0 else
-                    1.0 - var
-                    for var in self.cost_vars.values()
-                    ]) <= len(self.cost_vars)-1)
-                self.gm.params.Cutoff = -gurobipy.GRB.INFINITY
+                if denial == 1:
+                    self.gm.addConstr(gurobipy.quicksum([
+                        var
+                        if var.getAttr(gurobipy.GRB.Attr.X) == 1.0 else
+                        1.0 - var
+                        for var in self.lit_vars.values()
+                        ]) <= len(self.lit_vars)-1)
+
+                else:
+                    self.gm.addConstr(gurobipy.quicksum([
+                        var
+                        if var.getAttr(gurobipy.GRB.Attr.X) == 1.0 else
+                        1.0 - var
+                        for var in self.cost_vars.values()
+                        ]) <= len(self.cost_vars)-1)
+
 
     def print_iis(self):
 
@@ -156,7 +165,7 @@ class ilp_wmaxsat_solver_t:
         return parse.list2tuple(unify.skolemize(list(set([
                 tuple(l)
                 for l in unify.subst(theta, sol)
-                if l[0] != "=" and parse.is_etc(l)
+                if l[0] != "="
                 ] + eqs))))
 
     def _check_sum(self, sol):
@@ -168,21 +177,24 @@ class ilp_wmaxsat_solver_t:
 
         return True
 
-    def _create_var(self, node):
-        if is_opr(node[1]):
-            return self.gm.addVar(vtype=gurobipy.GRB.BINARY)
+    def _create_var(self, f, node):
+        if formula.is_opr(node[1]):
+            return self.gm.addVar(vtype=gurobipy.GRB.BINARY, name="%s%d" % (node[1], node[0]))
 
-        if not self.lit_vars.has_key(node[1]):
-            self.lit_vars[node[1]] = self.gm.addVar(vtype=gurobipy.GRB.BINARY)
+        l = parse.atom(node[1])
 
-            if node[1][0] == "=":
-                self.eqlit_vars[node[1]] = self.lit_vars[node[1]]
+        if not self.lit_vars.has_key(l):
+            self.lit_vars[l] = self.gm.addVar(vtype=gurobipy.GRB.BINARY, name=repr(l))
 
-        return self.lit_vars[node[1]]
+            if l[0] == "=":
+                self.eqlit_vars[l] = self.lit_vars[l]
+
+        return self.lit_vars[l]
 
     def _encode_variables(self, f):
 
-        nonab = self.gm.addVar(vtype=gurobipy.GRB.BINARY, ub=0.0)
+        self.c0var = self.gm.addVar(vtype=gurobipy.GRB.BINARY, lb=0.0, ub=0.0)
+        self.c1var = self.gm.addVar(vtype=gurobipy.GRB.BINARY, lb=1.0, ub=1.0)
 
         # create varibles for equalities.
         for cc in nx.connected_components(f.unifiable_var_graph):
@@ -191,10 +203,10 @@ class ilp_wmaxsat_solver_t:
 
                 # check unifiability
                 if v1 != v2 and not unify.variablep(v1) and not unify.variablep(v2):
-                    self.lit_vars[("=", v1, v2)] = nonab
+                    self.lit_vars[("=", v1, v2)] = self.c0var
 
                 else:
-                    self._create_var((-1, ("=", v1, v2)))
+                    self._create_var(f, (-1, ("=", v1, v2)))
 
         # create unification variable.
         for arity, nodes in f.unifiables.iteritems():
@@ -202,23 +214,24 @@ class ilp_wmaxsat_solver_t:
 
             for l1 in literals:
                 for l2 in literals:
-                    self.uni_vars[l1][l2] = self.gm.addVar(vtype=gurobipy.GRB.BINARY)
+                    if unify.unify(l1, l2) == None:
+                        self.uni_vars[l1][l2] = self.c1var
 
-                    for i in xrange(arity[1] - 1):
-                        v1, v2 = parse.varsort(l1[2+i], l2[2+i])
-                        self.eq_dep[("=", v1, v2)] += [(l1, l2)]
+                    else:
+                        self.uni_vars[l1][l2] = self.gm.addVar(vtype=gurobipy.GRB.BINARY)
+
+                        for i in xrange(arity[1] - 1):
+                            v1, v2 = parse.varsort(l1[2+i], l2[2+i])
+                            self.eq_dep[("=", v1, v2)] += [(l1, l2)]
 
         # create node variable.
         for node in f.nxg.nodes_iter():
 
-            # if it is non abducible, ...
-            is_etc   = parse.is_etc(node[1])
-
             # create node variable.
-            self.vars[node] = self._create_var(node)
+            self.vars[node] = self._create_var(f, node)
 
-            # create cost variable.
-            if is_etc:
+            # create cost variable (for etc literals).
+            if parse.is_etc(node[1]):
                 if not self.cost_vars.has_key(node[1]):
                     self.cost_vars[node[1]] = self.gm.addVar(vtype=gurobipy.GRB.BINARY)
 
@@ -228,61 +241,42 @@ class ilp_wmaxsat_solver_t:
 
         conseq_minimizer = collections.defaultdict(list)
 
-        # create and-or constraints.
+        # for logical operators.
         for node in f.nxg.nodes_iter():
-
-            # root formula must be satisfied.
-            if len(f.nxg.predecessors(node)) == 0:
-                self.gm.addConstr(self.vars[node] == 1)
 
             if "^" == node[1]:
                 self._encode_and(f, node)
 
                 for child_node in f.nxg.successors(node):
-                    conseq_minimizer[child_node[1]] += [self.vars[node]]
+                    conseq_minimizer[child_node] += [self.vars[node]]
 
             elif "v" == node[1]:
                 self._encode_or(f, node)
 
+            elif "|" == node[1]:
+                self._encode_xor(f, node)
+
             elif "<->" == node[1]:
                 self._encode_dimp(f, node)
 
-        # for minimizing consequent.
-        for lit, dependent_nodes in conseq_minimizer.iteritems():
-            self.gm.addConstr(self.lit_vars[lit] <= gurobipy.quicksum(dependent_nodes))
+        # for consequent minimization.
+        self._encode_conseqmin(conseq_minimizer)
 
         # for unification vars.
-        for arity, nodes in f.unifiables.iteritems():
-            literals = set([n[1] for n in nodes])
+        self._encode_univars(f)
 
-            for a1 in literals:
-                for a2 in literals:
-                    cvar = self.uni_vars[a1][a2]
+        # for cost variables.
+        self._encode_costvars(f)
 
-                    if a1 == a2:
-                        self.uni_vars[a1][a2] = self.lit_vars[a1]
+        self.gm.update()
 
-                    else:
-                        # if they are not unifiable, pretend like it is always satisfied.
-                        if None == unify.unify(a1, a2):
-                            self.gm.addConstr(cvar == 1)
-                            continue
+    def _nvar(self, node):
+        if parse.is_negated(node[1]):
+            return 1.0 - self.vars[node]
 
-                        #
-                        # y_p(x) <=> p(x) \land (p(y) \land y=x => \lnot y_p(y))
-                        xvars = [1.0 - self.lit_vars[a2], 1.0 - self.cost_vars[a2]]
+        return self.vars[node]
 
-                        for i in xrange(arity[1]-1):
-                            if a1[2+i] == a2[2+i]:
-                                continue
-
-                            v1, v2 = parse.varsort(a1[2+i], a2[2+i])
-                            xvars += [1.0 - self.lit_vars[("=", v1, v2)]]
-
-                        self.gm.addConstr(cvar <= gurobipy.quicksum(xvars))
-                        self.gm.addConstr(gurobipy.quicksum(xvars) <= len(xvars)*cvar)
-
-        # constraints for cost variables.
+    def _encode_costvars(self, f):
         for lit, cvar in self.cost_vars.iteritems():
             ari = parse.arity(lit)
 
@@ -297,33 +291,91 @@ class ilp_wmaxsat_solver_t:
 
                 self.gm.addGenConstrAnd(cvar, relatives)
 
-        self.gm.update()
+    def _encode_univars(self, f):
+        for arity, nodes in f.unifiables.iteritems():
+            literals = set([n[1] for n in nodes])
+
+            for a1 in literals:
+                for a2 in literals:
+                    # semantics: u_{a1,a2} = 1 if a2 is equivalent to a2 with unification.
+                    cvar = self.uni_vars[a1][a2]
+
+                    if a1 == a2:
+                        self.uni_vars[a1][a2] = self.lit_vars[a1]
+                        continue
+
+                    if None == unify.unify(a1, a2):
+                        continue
+
+                    # y_p(x) <=> p(x) \land (p(y) \land y=x => \lnot y_p(y))
+                    xvars = [1.0 - self.lit_vars[a2], 1.0 - self.cost_vars[a2]]
+
+                    for i in xrange(arity[1]-1):
+                        if a1[2+i] == a2[2+i]:
+                            continue
+
+                        v1, v2 = parse.varsort(a1[2+i], a2[2+i])
+                        xvars += [1.0 - self.lit_vars[("=", v1, v2)]]
+
+                    self.gm.addConstr(cvar <= gurobipy.quicksum(xvars))
+                    self.gm.addConstr(gurobipy.quicksum(xvars) <= len(xvars)*cvar)
+
+    def _encode_conseqmin(self, conseq_minimizer):
+        for node, dependent_nodes in conseq_minimizer.iteritems():
+            self.gm.addConstr(self._nvar(node) <= gurobipy.quicksum(dependent_nodes))
 
     def _encode_and(self, f, node):
         # c=1 <=> x1=1 \land x2=1 \land ... \land xn=1
-        cvar, xvars = self.vars[node], [self.vars[x] for x in f.nxg.successors(node)]
+        cvar, xvars = self._nvar(node), [self._nvar(x) for x in f.nxg.successors(node)]
 
-        self.gm.addGenConstrAnd(cvar, xvars)
+        if len(f.nxg.predecessors(node)) == 0:
+            self.gm.addConstr(gurobipy.quicksum(xvars) >= len(xvars), name="^")
+
+        else:
+            self.gm.addConstr(len(xvars)*cvar <= gurobipy.quicksum(xvars), name="^")
+            self.gm.addConstr(gurobipy.quicksum(xvars) - len(xvars) + 1 <= cvar, name="^")
 
     def _encode_or(self, f, node):
         # dvar=1 <=> c1=1 \lor c2=1 \lor ... \lor cn=1
-        dvar, xvars = self.vars[node], [self.vars[x] for x in f.nxg.successors(node)]
+        dvar, xvars = self._nvar(node), [self._nvar(x) for x in f.nxg.successors(node)]
 
-        self.gm.addGenConstrOr(dvar, xvars)
+        if len(f.nxg.predecessors(node)) == 0:
+            self.gm.addConstr(gurobipy.quicksum(xvars) >= 1, name="v")
 
-        # to avoid redundant explanation
-        if len(xvars) > 1:
-            self.gm.addSOS(gurobipy.GRB.SOS_TYPE1, xvars)
+        else:
+            self.gm.addConstr(dvar <= gurobipy.quicksum(xvars), name="v")
+            self.gm.addConstr(gurobipy.quicksum(xvars) <= len(xvars)*dvar, name="v")
+
+    def _encode_xor(self, f, node):
+        # dvar=1 <=> c1=1 \lxor c2=1 \lxor ... \lxor cn=1
+        dvar, xvars = self._nvar(node), [self._nvar(x) for x in f.nxg.successors(node)]
+
+        if len(f.nxg.predecessors(node)) == 0:
+            self.gm.addConstr(gurobipy.quicksum(xvars) == 1, name="|")
+
+        else:
+            self.gm.addConstr(dvar <= gurobipy.quicksum(xvars), name="|")
+            self.gm.addConstr(gurobipy.quicksum(xvars) <= len(xvars)*dvar, name="|")
+
+            # to avoid redundant explanation
+            if len(xvars) > 1:
+                self.gm.addConstr(gurobipy.quicksum(xvars) <= 1)
 
     def _encode_dimp(self, f, node):
-        # dvar <=> (xvar=1 <=> yvar=1)
-        dvar       = self.vars[node]
-        xvar, yvar = [self.vars[x] for x in f.nxg.successors(node)]
+        # dvar=1 <=> (xvar=1 <=> yvar=1)
+        dvar       = self._nvar(node)
+        xvar, yvar = [self._nvar(x) for x in f.nxg.successors(node)]
 
-        self.gm.addConstr(1-xvar + 1-yvar +   dvar >= 1)
-        self.gm.addConstr(  xvar +   yvar +   dvar >= 1)
-        self.gm.addConstr(  xvar + 1-yvar + 1-dvar >= 1)
-        self.gm.addConstr(1-xvar +   yvar + 1-dvar >= 1)
+        # self.gm.addConstr(xvar*yvar == dvar, name="<=>")
+
+        if len(f.nxg.predecessors(node)) == 0:
+            self.gm.addConstr(xvar == yvar, name="<=>")
+
+        else:
+            self.gm.addConstr(1-xvar + 1-yvar +   dvar >= 1, name="<=>")
+            self.gm.addConstr(  xvar +   yvar +   dvar >= 1, name="<=>")
+            self.gm.addConstr(  xvar + 1-yvar + 1-dvar >= 1, name="<=>")
+            self.gm.addConstr(1-xvar +   yvar + 1-dvar >= 1, name="<=>")
 
     def _encode_transitivity(self, x, y, z, lazy=False):
 
@@ -355,17 +407,8 @@ class ilp_wmaxsat_solver_t:
         for cc in nx.connected_components(
             self.formula.unifiable_var_graph.subgraph(nodes)
         ):
-            cc = list(cc)
-            n_const = 0
-
-            # only introduce for two-constant cluster.
-            for v in cc:
-                if not unify.variablep(v):
-                    n_const += 1
-
-            if n_const >= 2:
-                for v1, v2, v3 in itertools.combinations(cc, 3):
-                    self._encode_transitivity(v1, v2, v3, lazy=True)
+            for v1, v2, v3 in itertools.combinations(cc, 3):
+                self._encode_transitivity(v1, v2, v3, lazy=True)
 
     def _encode_objective(self, f, initial_h = []):
         '''set ILP objective.'''
@@ -410,3 +453,19 @@ class ilp_wmaxsat_solver_t:
         literals = list(self.lit_vars)
         sol = self.gm.cbGetSolution([self.lit_vars[k] for k in literals])
         return dict([(literals[i], sol[i]) for i in xrange(len(literals))])
+
+if "__main__" == __name__:
+    #
+    # sample input:
+    #  (or (x1) (x2)) (or (~x2) (x3) (~x4)) (or (~x1) (x4))
+    f = formula.maxsat_t(parse.parse(sys.stdin.read()))
+    f.visualize(sys.stdout)
+
+    wms = ilp_wmaxsat_solver_t()
+    wms.encode(f)
+    wms.write_lp("test.lp")
+
+    wms.gm.params.outputFlag = 0
+
+    for sol in wms.find_solutions(10, denial=1):
+        print sol

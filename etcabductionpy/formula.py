@@ -10,6 +10,9 @@ import collections
 import networkx as nx
 import bisect
 
+def is_opr(x):
+    return x == "^" or x == "v" or x == "|" or x == "<->"
+
 def obtain_relevant_kb(kb, conj, maxdepth):
     """obtain relevant axioms to conj."""
 
@@ -35,12 +38,12 @@ def obtain_relevant_kb(kb, conj, maxdepth):
     while len(queue) > 0:
         lv, p = queue.pop()
 
-        if p in bkon:
+        if p in bkon or parse.is_etc(p):
             continue
 
         bkon.add(p)
 
-        if not parse.is_etc(p):
+        if not parse.is_negated(p):
             ret.add(("if", ("etc_nonab_%d" % unique_id, 1e-100), p, ))
 
         unique_id += 1
@@ -99,7 +102,7 @@ class formula_t(object):
         _unifiables = collections.defaultdict(list)
 
         for node in self.nxg.nodes_iter():
-            if node[1] in ["^", "v", "<->"]:
+            if is_opr(node[1]):
                 continue
 
             if not parse.is_etc(node[1]):
@@ -137,6 +140,38 @@ class formula_t(object):
 
         return (self.unique_id, dat)
 
+class maxsat_t(formula_t):
+    def __init__(self, kb):
+        super(maxsat_t, self).__init__()
+
+        def _parse(f, parent = -1):
+            if f[0] == "and":
+                gnid_conj = self._create_node("^")
+
+                if parent != -1:
+                    self.nxg.add_edge(parent, gnid_conj)
+
+                for cjt in f[1:]:
+                    _parse(cjt, gnid_conj)
+
+            elif f[0] == "or":
+                gnid_disj = self._create_node("v")
+
+                if parent != -1:
+                    self.nxg.add_edge(parent, gnid_disj)
+
+                for djt in f[1:]:
+                    _parse(djt, gnid_disj)
+
+            else:
+                gnid_lit = self._create_node(tuple(f))
+
+                if parent != -1:
+                    self.nxg.add_edge(parent, gnid_lit)
+
+        for rule in kb:
+            _parse(rule)
+
 class clark_completion_t(formula_t):
     """Assumes knowledge base is in the form of Normal Logic Programs."""
 
@@ -159,7 +194,7 @@ class clark_completion_t(formula_t):
             gnid_expl_from = gnid_dimp
 
             if len(bodies) > 1:
-                gnid_disj = self._create_node("v")
+                gnid_disj = self._create_node("|")
                 self.nxg.add_edge(gnid_dimp, gnid_disj)
                 gnid_expl_from = gnid_disj
 
@@ -235,7 +270,7 @@ class explanation_formula_t(formula_t):
                 from_node = from_id
 
                 if len(self.ikb[predicate]) > 1:
-                    gnid_disj = self._create_node("v")
+                    gnid_disj = self._create_node("|")
                     from_node = gnid_disj
                     self.nxg.add_edge(gnid_conj, gnid_disj)
 

@@ -37,7 +37,13 @@ def etcAbduction(obs, kb, indexed_kb, maxdepth, skolemize = True):
         return res
 
 def jointProbability(etcs):
-    return reduce(lambda x, y: x*y, [l[1] for l in etcs])
+    return reduce(
+        lambda x, y: x*y,
+            [l[1]
+            for l in etcs
+            if parse.is_etc(l)
+            ],
+            1.0)
 
 def bestCaseProbability(etcs):
     '''If we were wildly successful at unifing all literals, what would the joint probability be?'''

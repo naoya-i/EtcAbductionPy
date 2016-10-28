@@ -7,6 +7,7 @@ from __future__ import print_function
 import argparse
 import sys
 
+import unify
 import parse
 import etcetera
 import abduction
@@ -130,9 +131,11 @@ if args.kbpickle:
 
 # Explanation formula
 if args.expf_graph:
-    expf = formula.relevant_formula_t(indexed_kb, args.depth)
-    expf.derive(obs)
-    expf.visualize(sys.stdout)
+    obs = unify.standardize(obs)
+    rkb = formula.obtain_relevant_kb(kb, obs, args.depth)
+    f = formula.clark_completion_t(rkb)
+    f.add_observations(obs)
+    f.visualize(sys.stdout)
 
     sys.exit()
 
