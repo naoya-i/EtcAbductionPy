@@ -16,6 +16,7 @@ import math
 import time
 import logging
 import os
+import sys
 
 import collections
 
@@ -29,21 +30,22 @@ class stopwatch_t:
     def stop(self, name):
         self.records[name] = time.time() - self.time
 
-def nbest_ilp(obs, kb, indexed_kb, maxdepth, n, verbose = False):
+def nbest_ilp(obs, kb, maxdepth, n, verbose = False):
 
     sw = stopwatch_t()
 
-    logging.info("Generating an explanation formula...")
+    logging.info("Relevant reasoning...")
 
     sw.start()
-    f = formula.explanation_formula_t(indexed_kb, maxdepth)
-    f.derive(obs)
+    obs = unify.standardize(obs)
+    rkb = formula.obtain_relevant_kb(kb, obs, maxdepth)
+    f = formula.clark_completion_t(rkb)
+    f.add_observations(obs)
+    f.scan_unifiables()
+    #f.visualize_var_graph(sys.stdout)
     sw.stop("gen_expf")
 
-    logging.info(" Lower bound prob.: %f" % math.exp(f.lower_bound_logprob))
-
-    logging.info(" Obtaining lower bound hypothesis...")
-    lower_h = f.traverse_lower_bound()
+    #return []
 
     # create ilp problem.
     logging.info("Converting the WMSAT into ILP...")
@@ -57,7 +59,7 @@ def nbest_ilp(obs, kb, indexed_kb, maxdepth, n, verbose = False):
     else:
         wms.gm.params.outputFlag = 1
 
-    wms.encode(f, lower_h)
+    wms.encode(f)
     sw.stop("ilpconv")
 
     # output statistics.
@@ -79,20 +81,20 @@ def nbest_ilp(obs, kb, indexed_kb, maxdepth, n, verbose = False):
         if len(sol) == 0:
             logging.info("  No more solution.")
 
-            if verbose and wms.gm.getAttr(gurobipy.GRB.Attr.Status) == gurobipy.GRB.INFEASIBLE:
-                # output IIS for debug.
-                wms.gm.computeIIS()
-
-                for c in wms.gm.getConstrs():
-                    if c.getAttr(gurobipy.GRB.Attr.IISConstr) == 1:
-                        print("Infeasible: %s" % c.getAttr(gurobipy.GRB.Attr.ConstrName))
+            if verbose:
+                if wms.gm.getAttr(gurobipy.GRB.Attr.Status) == gurobipy.GRB.INFEASIBLE:
+                    wms.print_iis()
 
             break
+
+        logging.info("  Got %d-best solution!" % (1+len(sols)))
 
         # sounds good.
         sols += [sol]
 
-        logging.info("  Got %d-best solution!" % (len(sols)))
+        if verbose:
+            wms.print_costvars()
+
 
     sw.stop("ilpsol")
 

@@ -128,12 +128,9 @@ if args.kbpickle:
 
     logging.info("Knowledge base loaded.")
 
-indexed_kb = abduction.index_by_consequent_predicate(kb, obs)
-logging.info("Knowledge base indexed.")
-
 # Explanation formula
 if args.expf_graph:
-    expf = formula.explanation_formula_t(indexed_kb, args.depth)
+    expf = formula.relevant_formula_t(indexed_kb, args.depth)
     expf.derive(obs)
     expf.visualize(sys.stdout)
 
@@ -162,7 +159,7 @@ else:
 
         # import may take a while.
         time_start = time.time()
-        solutions = etcetera_ilp.nbest_ilp(obs, kb, indexed_kb, args.depth, args.nbest, args.ilp_verbose)
+        solutions = etcetera_ilp.nbest_ilp(obs, kb, args.depth, args.nbest, args.ilp_verbose)
 
     elif args.astar_search:
         import etcetera_search
@@ -171,6 +168,9 @@ else:
         solutions = etcetera_search.nbest_astar(obs, kb, indexed_kb, args.depth, args.nbest, args.astar_graph)
 
     else:
+        indexed_kb = abduction.index_by_consequent_predicate(kb, obs)
+        logging.info("Knowledge base indexed.")
+
         solutions = etcetera.nbest(obs, kb, indexed_kb, args.depth, args.nbest)
 
 logging.info(str(len(solutions)) + " solutions.")

@@ -18,9 +18,9 @@ def subst(theta, x):
         return subst(theta, theta[x])
     else:
         return x
-    
+
 def listp(item): # includes both literals and functions
-    return isinstance(item, list)
+    return isinstance(item, list) or isinstance(item, tuple)
 
 def variablep(item): # a string that starts with a question mark
     return isinstance(item, str) and len(item) > 1 and item[0] == "?"
@@ -39,7 +39,7 @@ def all_variables(sexp):
     #if isinstance(sexp, str) and sexp[0] == '?':
     if variablep(sexp):
         return set([sexp])
-    elif isinstance(sexp, list):
+    elif isinstance(sexp, list) or isinstance(sexp, tuple):
         return set().union(*[all_variables(item) for item in sexp])
     else:
         return set()
@@ -62,7 +62,7 @@ def skolemize(sexp):
 
 
 # Version 1 : Classic style of old LISP programmers
-    
+
 def unify1(x, y, theta = {}):
     if theta == None:
         return None
@@ -90,7 +90,7 @@ def unify_var(var, x, theta):
         return theta_copy
 #        theta[var] = x
 #        return theta
-        
+
 def occur_check(var, x):
     if var == x:
         return True
@@ -175,7 +175,7 @@ def nofunctions(x, y, theta = {}):
         t = y[i]
         while s in theta:
             s = theta[s]
-        while t in theta: 
+        while t in theta:
             t = theta[t]
         if s != t:
             if s[0] == "?": # cheaper var test
@@ -188,7 +188,7 @@ def nofunctions(x, y, theta = {}):
             else:
                 return None
     return theta
-                
-        
-                
+
+
+
 # Todo: standardize and subst in single function (optimization)
