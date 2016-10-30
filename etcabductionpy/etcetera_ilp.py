@@ -38,15 +38,13 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False):
 
     sw.start()
     obs = unify.standardize(obs)
-    rkb = formula.obtain_relevant_kb(kb, obs, maxdepth)
+    rkb, nonab = formula.obtain_relevant_kb(kb, obs, maxdepth)
     f = formula.clark_completion_t(rkb)
     f.add_observations(obs)
+    f.add_nonabs(nonab)
     f.scan_unifiables()
     sw.stop("gen_expf")
-
-    for r in rkb:
-        print r
-
+        
     # create ilp problem.
     logging.info("Converting the WMSAT into ILP...")
 

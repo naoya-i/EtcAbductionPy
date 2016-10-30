@@ -170,6 +170,11 @@ def list2tuple(a, tuple=tuple, type=type, list=list):
 def arity(l):
     return (l[0], len(l[1:]))
 
+def negate(l):
+    ret = list(l)
+    ret[0] = "~" + ret[0]
+    return tuple(ret)
+
 def atom(l):
     ret = list(l)
     ret[0] = ret[0].lstrip("~")

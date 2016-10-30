@@ -27,7 +27,7 @@ def obtain_relevant_kb(kb, conj, maxdepth):
 
     # relevant reasoning.
     ret, bkon, queue = set(), set(), []
-    unifiable_atoms  = collections.defaultdict(set)
+    etcized          = collections.defaultdict(int)
 
     # add observations to the queue.
     for ob in conj:
@@ -44,9 +44,7 @@ def obtain_relevant_kb(kb, conj, maxdepth):
         bkon.add(p)
 
         if not parse.is_negated(p):
-            ret.add(("if", ("etc_nonab_%d" % unique_id, 1e-100), p, ))
-
-        unique_id += 1
+            etcized[p] += 0
 
         if lv == maxdepth:
             continue
@@ -58,6 +56,8 @@ def obtain_relevant_kb(kb, conj, maxdepth):
             if theta == None:
                 continue
 
+            etcized[p] += 1
+
             relevant_rule = unify.standardize(unify.subst(theta, relevant_rule))
 
             ret.add(parse.list2tuple(relevant_rule))
@@ -65,10 +65,10 @@ def obtain_relevant_kb(kb, conj, maxdepth):
             # queue += [parse.consequent(relevant_rule)]
 
             for lit in parse.antecedent(relevant_rule):
-                queue += [(lv+1, tuple(lit))]
-                unifiable_atoms[(lit[0], len(lit[1:]))].add(tuple(lit))
+                if not parse.is_etc(tuple(lit)):
+                    queue += [(lv+1, tuple(lit))]
 
-    return ret
+    return ret, [l for l in etcized if etcized[l] == 0]
 
 class formula_t(object):
     def __init__(self):
@@ -218,6 +218,14 @@ class clark_completion_t(formula_t):
 
         for ob in obs:
             self.nxg.add_edge(gnid_conj, self._create_node(tuple(ob)))
+
+    def add_nonabs(self, nonab):
+
+        # add observations.
+        gnid_conj = self._create_node("^")
+
+        for l in nonab:
+            self.nxg.add_edge(gnid_conj, self._create_node(parse.negate(l)))
 
 class explanation_formula_t(formula_t):
     def __init__(self, ikb, maxdepth):

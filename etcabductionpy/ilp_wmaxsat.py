@@ -20,7 +20,7 @@ import networkx as nx
 class ilp_wmaxsat_solver_t:
     def __init__(self):
         self.gm = gurobipy.Model("ilp_wmaxsat_solver")
-        self.gm.params.LazyConstraints = 1
+        #self.gm.params.LazyConstraints = 1
 
         self.vars = {}
         self.lit_vars = {}
@@ -30,6 +30,7 @@ class ilp_wmaxsat_solver_t:
 
         self.eq_dep = collections.defaultdict(list)
         self.sol_related_eqs = {}
+        self.sol_related_vars = set()
         self.trans_eq_cache = {}
 
         self.c0var, self.c1var = None, None
@@ -57,11 +58,14 @@ class ilp_wmaxsat_solver_t:
         '''find n-best solutions. '''
         sols = set()
 
+        self.gm.params.PoolSearchMode = 0
+
         while len(sols) < n:
 
             # find the best assignment.
             self._init_inference()
 
+            self.gm.reset()
             self.gm.optimize(lambda model, where: self._cb_gurobi(model, where))
 
             #
@@ -70,25 +74,28 @@ class ilp_wmaxsat_solver_t:
                 yield []
                 break
 
-            sol = self._reduce_sol(self._get_currentsol())
+            if self.gm.getAttr(gurobipy.GRB.Attr.Status) != gurobipy.GRB.Status.OPTIMAL:
+                continue
+
+            sol = solution_t(self)
 
             # assertion.
-            if not self._check_sum(sol):
+            if not sol.check_sum():
                 raise Exception("Fatal error!")
 
-            if frozenset(sol) in sols:
+            if frozenset(sol.literals) in sols:
                 logging.info("  ...")
 
             else:
-                sols.add(frozenset(sol))
-                yield sol
+                sols.add(frozenset(sol.literals))
+                yield sol.literals
 
             # deny the current sol.
             if len(sols) < n:
                 if denial == 1:
                     self.gm.addConstr(gurobipy.quicksum([
                         var
-                        if var.getAttr(gurobipy.GRB.Attr.X) == 1.0 else
+                        if var.X > 0.5 else
                         1.0 - var
                         for var in self.lit_vars.values()
                         ]) <= len(self.lit_vars)-1)
@@ -96,86 +103,36 @@ class ilp_wmaxsat_solver_t:
                 else:
                     self.gm.addConstr(gurobipy.quicksum([
                         var
-                        if var.getAttr(gurobipy.GRB.Attr.X) == 1.0 else
+                        if var.X > 0.5 else
                         1.0 - var
                         for var in self.cost_vars.values()
                         ]) <= len(self.cost_vars)-1)
 
-
     def print_iis(self):
 
         # output IIS for debug.
-        wms.gm.computeIIS()
+        self.gm.computeIIS()
 
-        for c in wms.gm.getConstrs():
+        for c in self.gm.getConstrs():
             if c.getAttr(gurobipy.GRB.Attr.IISConstr) == 1:
                 print("Infeasible: %s" % c.getAttr(gurobipy.GRB.Attr.ConstrName))
 
     def print_costvars(self):
+        for lit, var in self.lit_vars.iteritems():
+            if var.X > 0.5:
+                logging.info("Literal: %s" % repr(lit))
+
         for lit, var in self.cost_vars.iteritems():
-            if var.getAttr(gurobipy.GRB.Attr.X) == 1.0:
+            if var.X > 0.5:
                 logging.info("Payment: %s" % repr(lit))
 
         for lit, var in self.eqlit_vars.iteritems():
-            if var.getAttr(gurobipy.GRB.Attr.X) == 1.0:
+            if var.X > 0.5:
                 logging.info("Eq: %s" % repr(lit))
 
     def _init_inference(self):
         self.sol_related_eqs = {}
         self.trans_eq_cache = {}
-
-    def _get_currentsol(self):
-        return [
-            k
-            for k, var in self.lit_vars.iteritems()
-            if var.getAttr(gurobipy.GRB.Attr.X) == 1.0
-        ]
-
-    def _reduce_sol(self, sol, reduce_eqs = True):
-
-        # construct variable unification network.
-        vargraph = nx.Graph()
-
-        for l in sol:
-            if l[0] == "=" and self.sol_related_eqs.has_key(l):
-                vargraph.add_edge(l[1], l[2])
-
-        # prepare "eq" literals and substitutor.
-        theta = {}
-        eqs   = []
-
-        for cc in nx.connected_components(vargraph):
-            uvars        = list(cc)
-            new_var_name = uvars[0]
-            eqs         += [tuple(["="] + uvars)]
-
-            # find a better name.
-            for t in uvars:
-                if not unify.variablep(t):
-                    new_var_name = t
-                    break
-
-            for t in uvars:
-                if t != new_var_name:
-                    theta[t] = new_var_name
-
-        if not reduce_eqs: theta = {}
-        else:              eqs   = []
-
-        return parse.list2tuple(unify.skolemize(list(set([
-                tuple(l)
-                for l in unify.subst(theta, sol)
-                if l[0] != "="
-                ] + eqs))))
-
-    def _check_sum(self, sol):
-        p1, p2 = math.log(etcetera.jointProbability(sol)), self.gm.getAttr(gurobipy.GRB.Attr.ObjVal)
-
-        if abs(p1-p2) >= 1e-6:
-            logging.info("  FATAL ERROR: %f != %f" % (math.exp(p1), math.exp(p2)))
-            return False
-
-        return True
 
     def _create_var(self, f, node):
         if formula.is_opr(node[1]):
@@ -233,7 +190,7 @@ class ilp_wmaxsat_solver_t:
             # create cost variable (for etc literals).
             if parse.is_etc(node[1]):
                 if not self.cost_vars.has_key(node[1]):
-                    self.cost_vars[node[1]] = self.gm.addVar(vtype=gurobipy.GRB.BINARY)
+                    self.cost_vars[node[1]] = self.gm.addVar(vtype=gurobipy.GRB.BINARY, name="y_{%s}" % repr(node[1]))
 
         self.gm.update()
 
@@ -243,6 +200,9 @@ class ilp_wmaxsat_solver_t:
 
         # for logical operators.
         for node in f.nxg.nodes_iter():
+
+            if len(f.nxg.predecessors(node)) == 0:
+                self.gm.addConstr(self.vars[node] == 1)
 
             if "^" == node[1]:
                 self._encode_and(f, node)
@@ -267,6 +227,10 @@ class ilp_wmaxsat_solver_t:
 
         # for cost variables.
         self._encode_costvars(f)
+
+        # for cc in nx.connected_components(f.unifiable_var_graph):
+        #     for v1, v2, v3 in itertools.combinations(cc, 3):
+        #         self._encode_transitivity(v1, v2, v3, lazy=False)
 
         self.gm.update()
 
@@ -328,8 +292,8 @@ class ilp_wmaxsat_solver_t:
         # c=1 <=> x1=1 \land x2=1 \land ... \land xn=1
         cvar, xvars = self._nvar(node), [self._nvar(x) for x in f.nxg.successors(node)]
 
-        if len(f.nxg.predecessors(node)) == 0:
-            self.gm.addConstr(gurobipy.quicksum(xvars) >= len(xvars), name="^")
+        if len(f.nxg.successors(node)) == 0:
+            self.gm.addConstr(gurobipy.quicksum(xvars) >= len(xvars))
 
         else:
             self.gm.addConstr(len(xvars)*cvar <= gurobipy.quicksum(xvars), name="^")
@@ -339,8 +303,8 @@ class ilp_wmaxsat_solver_t:
         # dvar=1 <=> c1=1 \lor c2=1 \lor ... \lor cn=1
         dvar, xvars = self._nvar(node), [self._nvar(x) for x in f.nxg.successors(node)]
 
-        if len(f.nxg.predecessors(node)) == 0:
-            self.gm.addConstr(gurobipy.quicksum(xvars) >= 1, name="v")
+        if len(f.nxg.successors(node)) == 0:
+            self.gm.addConstr(gurobipy.quicksum(xvars) >= 1)
 
         else:
             self.gm.addConstr(dvar <= gurobipy.quicksum(xvars), name="v")
@@ -350,26 +314,25 @@ class ilp_wmaxsat_solver_t:
         # dvar=1 <=> c1=1 \lxor c2=1 \lxor ... \lxor cn=1
         dvar, xvars = self._nvar(node), [self._nvar(x) for x in f.nxg.successors(node)]
 
-        if len(f.nxg.predecessors(node)) == 0:
-            self.gm.addConstr(gurobipy.quicksum(xvars) == 1, name="|")
+        if len(f.nxg.successors(node)) == 0:
+            self.gm.addConstr(gurobipy.quicksum(xvars) >= 1)
 
         else:
             self.gm.addConstr(dvar <= gurobipy.quicksum(xvars), name="|")
             self.gm.addConstr(gurobipy.quicksum(xvars) <= len(xvars)*dvar, name="|")
 
-            # to avoid redundant explanation
-            if len(xvars) > 1:
-                self.gm.addConstr(gurobipy.quicksum(xvars) <= 1)
+        # to avoid redundant explanation
+        if len(xvars) > 1:
+            self.gm.addConstr(gurobipy.quicksum(xvars) <= 1)
 
     def _encode_dimp(self, f, node):
         # dvar=1 <=> (xvar=1 <=> yvar=1)
         dvar       = self._nvar(node)
         xvar, yvar = [self._nvar(x) for x in f.nxg.successors(node)]
 
-        # self.gm.addConstr(xvar*yvar == dvar, name="<=>")
-
-        if len(f.nxg.predecessors(node)) == 0:
-            self.gm.addConstr(xvar == yvar, name="<=>")
+        if len(f.nxg.successors(node)) == 0:
+            self.gm.addConstr(xvar <= yvar)
+            self.gm.addConstr(yvar <= xvar)
 
         else:
             self.gm.addConstr(1-xvar + 1-yvar +   dvar >= 1, name="<=>")
@@ -429,22 +392,34 @@ class ilp_wmaxsat_solver_t:
 
     def _cb_gurobi(self, model, where):
         if where == gurobipy.GRB.Callback.MIPSOL:
-            # set zeros to equalities not contained in current solution.
-
             self._cb_mipsol()
 
     def _cb_mipsol(self):
         """Gurobi callback."""
+        return
+
         self.sol_related_eqs = {}
-        nodes = []
+
+        #nodes = []
         sol   = self._cb_getsol()
+        varg  = nx.Graph()
+
+        for l in self.eqlit_vars:
+            if sol[l] == 1:
+                varg.add_edge(l[1], l[2])
+
+        for l in self.lit_vars:
+            if l[0] == "=": continue
+
+            for a in l[1:]:
+                self.sol_related_vars.add(a)
 
         for l in self.eqlit_vars:
             for l1, l2 in self.eq_dep[l]:
                 if sol[l1] == 1 and sol[l2] == 1:
-                    nodes += [l[1], l[2]]
                     self.sol_related_eqs[l] = 1
                     break
+        return
 
         self._encode_transitivity_partially(nodes)
 
@@ -453,6 +428,107 @@ class ilp_wmaxsat_solver_t:
         literals = list(self.lit_vars)
         sol = self.gm.cbGetSolution([self.lit_vars[k] for k in literals])
         return dict([(literals[i], sol[i]) for i in xrange(len(literals))])
+
+class solution_t:
+    def __init__(self, solver):
+        self.solver = solver
+        self.raw = self._get_raw_sol()
+
+        # construct variable unification network.
+        vargraph, relvars = self._get_var_unification_graph(self.raw)
+
+        # prepare "eq" literals and substitutor.
+        self.theta, self.unification = self._get_substitutor(vargraph, relvars)
+
+        # apply the substitution.
+        self.literals_etc, self.literals_nonetc = [], []
+
+        for l in parse.list2tuple(
+            unify.skolemize(
+                sorted(set([
+                    tuple(l)
+                    for l in unify.subst(self.theta, self.raw)
+                    if l[0] != "="
+                ]))
+            )
+        ):
+            if parse.is_etc(l):
+                self.literals_etc += [l]
+
+            else:
+                self.literals_nonetc += [l]
+
+        self.literals = self.literals_etc+self.literals_nonetc
+
+    def check_sum(self):
+        p1, p2, p3 = math.log(etcetera.jointProbability(self.literals)), sum([v.obj for v in self.solver.gm.getVars() if v.X > 0.5]), self.solver.gm.objVal
+
+        if abs(p1-p2) >= 1e-6 or abs(p2-p3) >= 1e-6:
+            print self.solver.gm.Status
+            logging.info("  FATAL ERROR: %f, %f, %f" % (math.exp(p1), math.exp(p2), math.exp(p3)))
+            logging.info(parse.display(self.raw))
+            return False
+
+        return True
+
+    def _get_raw_sol(self):
+        return [
+            k
+            for k, var in self.solver.lit_vars.iteritems()
+            if var.X > 0.5
+        ]
+
+    def _get_var_unification_graph(self, sol):
+        dsol = collections.Counter(sol)
+        relvars = set()
+        vargraph = nx.Graph()
+
+        for l in sol:
+            if l[0] == "=":
+                related = True
+
+                # check if the condition is satisfied.
+                if l in self.solver.eq_dep:
+                    related = False
+
+                    for l1, l2 in self.solver.eq_dep[l]:
+                        if l1 in dsol and l2 in dsol:
+                            related = True
+                            break
+
+                if related:
+                    vargraph.add_edge(l[1], l[2])
+
+            else:
+                # add all the arguments to related vars.
+                for a in l[1:]:
+                    relvars.add(a)
+
+        return vargraph, relvars
+
+    def _get_substitutor(self, vargraph, relvars):
+        theta = {}
+        eqs   = []
+
+        for cc in nx.connected_components(vargraph):
+            uvars        = list(cc)
+            new_var_name = uvars[0]
+            eqs += [tuple(["="] + uvars)]
+
+            if len(relvars & set(uvars)) == 0:
+                continue
+
+            # find a better name.
+            for t in uvars:
+                if not unify.variablep(t):
+                    new_var_name = t
+                    break
+
+            for t in uvars:
+                if t != new_var_name:
+                    theta[t] = new_var_name
+
+        return theta, eqs
 
 if "__main__" == __name__:
     #
