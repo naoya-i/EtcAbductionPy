@@ -44,7 +44,7 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False):
     f.add_nonabs(nonab)
     f.scan_unifiables()
     sw.stop("gen_expf")
-        
+
     # create ilp problem.
     logging.info("Converting the WMSAT into ILP...")
 
@@ -76,7 +76,7 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False):
     sols = []
 
     for sol in wms.find_solutions(n):
-        if len(sol) == 0:
+        if len(sol.literals) == 0:
             logging.info("  No more solution.")
 
             if verbose:
@@ -87,8 +87,11 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False):
 
         logging.info("  Got %d-best solution!" % (1+len(sols)))
 
+        print sol.literals, sol.unification
+        print sol.get_signature()
+
         # sounds good.
-        sols += [sol]
+        sols += [sol.literals]
 
         if verbose:
             wms.print_costvars()

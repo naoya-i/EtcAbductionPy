@@ -54,11 +54,9 @@ class ilp_wmaxsat_solver_t:
         '''Write the encoded problem into a file.'''
         self.gm.write(out)
 
-    def find_solutions(self, n, denial = 0):
+    def find_solutions(self, n, denial = 2):
         '''find n-best solutions. '''
-        sols = set()
-
-        self.gm.params.PoolSearchMode = 0
+        sols = []
 
         while len(sols) < n:
 
@@ -70,11 +68,11 @@ class ilp_wmaxsat_solver_t:
 
             #
             # add new solution (if any).
-            if self.gm.getAttr(gurobipy.GRB.Attr.SolCount) == 0:
+            if self.gm.SolCount == 0:
                 yield []
                 break
 
-            if self.gm.getAttr(gurobipy.GRB.Attr.Status) != gurobipy.GRB.Status.OPTIMAL:
+            if self.gm.Status != gurobipy.GRB.Status.OPTIMAL:
                 continue
 
             sol = solution_t(self)
@@ -83,12 +81,8 @@ class ilp_wmaxsat_solver_t:
             if not sol.check_sum():
                 raise Exception("Fatal error!")
 
-            if frozenset(sol.literals) in sols:
-                logging.info("  ...")
-
-            else:
-                sols.add(frozenset(sol.literals))
-                yield sol.literals
+            sols += [sol.literals]
+            yield sol
 
             # deny the current sol.
             if len(sols) < n:
@@ -101,12 +95,14 @@ class ilp_wmaxsat_solver_t:
                         ]) <= len(self.lit_vars)-1)
 
                 else:
+                    sig = sol.get_signature()
+
                     self.gm.addConstr(gurobipy.quicksum([
-                        var
-                        if var.X > 0.5 else
-                        1.0 - var
-                        for var in self.cost_vars.values()
-                        ]) <= len(self.cost_vars)-1)
+                        self.lit_vars[l]
+                        if self.lit_vars[l].X > 0.5 else
+                        1.0 - self.lit_vars[l]
+                        for l in sig
+                        ]) <= len(sig)-1)
 
     def print_iis(self):
 
@@ -228,9 +224,27 @@ class ilp_wmaxsat_solver_t:
         # for cost variables.
         self._encode_costvars(f)
 
-        # for cc in nx.connected_components(f.unifiable_var_graph):
-        #     for v1, v2, v3 in itertools.combinations(cc, 3):
-        #         self._encode_transitivity(v1, v2, v3, lazy=False)
+        for cc in nx.connected_components(f.unifiable_var_graph):
+            cc = list(cc)
+            const, var = [], []
+
+            for v in cc:
+                if not unify.variablep(v):
+                    const += [v]
+                else:
+                    var   += [v]
+
+            # for v1, v2, v3 in itertools.combinations(cc, 3):
+            #     self._encode_transitivity(v1, v2, v3, lazy=False)
+
+            for v in var:
+                xvars = []
+
+                for c in const:
+                    v1, v2 = parse.varsort(v, c)
+                    xvars += [self.lit_vars[("=", v1, v2)]]
+
+                self.gm.addConstr(gurobipy.quicksum(xvars)<= 1)
 
         self.gm.update()
 
@@ -433,12 +447,19 @@ class solution_t:
     def __init__(self, solver):
         self.solver = solver
         self.raw = self._get_raw_sol()
+        self.raw_literals = [tuple(l) for l in self.raw if l[0] != "="]
 
         # construct variable unification network.
-        vargraph, relvars = self._get_var_unification_graph(self.raw)
+        self.vargraph, self.relvars = self._get_var_unification_graph(self.raw)
 
         # prepare "eq" literals and substitutor.
-        self.theta, self.unification = self._get_substitutor(vargraph, relvars)
+        self.theta, self.unification = self._get_substitutor(self.vargraph, self.relvars)
+        self.unification_pairwise = []
+
+        for eqs in self.unification:
+            for v1, v2 in itertools.combinations(eqs[1:], 2):
+                v1, v2 = parse.varsort(v1, v2)
+                self.unification_pairwise += [("=", v1, v2)]
 
         # apply the substitution.
         self.literals_etc, self.literals_nonetc = [], []
@@ -471,6 +492,9 @@ class solution_t:
 
         return True
 
+    def get_signature(self):
+        return frozenset([l for l in self.raw_literals if parse.is_etc(l)] + [eq for eq in self.unification_pairwise if eq[1] in self.relvars and eq[2] in self.relvars])
+
     def _get_raw_sol(self):
         return [
             k
@@ -479,7 +503,7 @@ class solution_t:
         ]
 
     def _get_var_unification_graph(self, sol):
-        dsol = collections.Counter(sol)
+        dsol = collections.Counter([l for l in sol if l[0] != "="])
         relvars = set()
         vargraph = nx.Graph()
 
