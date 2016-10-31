@@ -87,9 +87,6 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False):
 
         logging.info("  Got %d-best solution!" % (1+len(sols)))
 
-        print sol.literals, sol.unification
-        print sol.get_signature()
-
         # sounds good.
         sols += [sol.literals]
 

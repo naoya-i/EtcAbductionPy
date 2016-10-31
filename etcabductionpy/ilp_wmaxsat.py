@@ -155,7 +155,7 @@ class ilp_wmaxsat_solver_t:
                 v1, v2 = parse.varsort(v1, v2)
 
                 # check unifiability
-                if v1 != v2 and not unify.variablep(v1) and not unify.variablep(v2):
+                if not unify.variablep(v1) and not unify.variablep(v2):
                     self.lit_vars[("=", v1, v2)] = self.c0var
 
                 else:
