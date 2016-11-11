@@ -36,14 +36,10 @@ argparser.add_argument('-k', '--kb',
                        type=argparse.FileType('r'),
                        help='Knowledge base of definite clauses as lisp s-expressions')
 
-argparser.add_argument('-kp', '--kbpickle',
-                       nargs='?',
-                       type=argparse.FileType('rb'),
-                       help='Pickle knowledge base of definite clauses as lisp s-expressions')
+argparser.add_argument('-km', '--kbmcdb',
+                       help='mcdb-cached knowledge base of definite clauses as lisp s-expressions')
 
 argparser.add_argument('-kc', '--kbcache',
-                       nargs='?',
-                       type=argparse.FileType('wb'),
                        help='Cache knowledge base.')
 
 argparser.add_argument('-n', '--nbest',
@@ -104,9 +100,23 @@ logging.basicConfig(
 # For kb caching.
 
 if args.kbcache:
+    logging.info("Loading knowledge base...")
     kblines = args.kb.readlines()
     kbtext = "".join(kblines)
-    cPickle.dump(parse.parse(kbtext), args.kbcache)
+
+    kbkb, kbfacts = parse.definite_clauses(parse.parse(kbtext))
+
+    logging.info("Indexing...")
+
+    import mcdb
+    mk = mcdb.make(args.kbcache)
+
+    for p, rules in abduction.index_by_consequent_predicate(kbkb, []).iteritems():
+        mk.add(p, cPickle.dumps(rules))
+
+    mk.add("__fact__", cPickle.dumps(kbfacts))
+    mk.finish()
+
     sys.exit()
 
 # Load files
@@ -122,20 +132,52 @@ if args.kb:
     kbtext = "".join(kblines)
     kbkb, kbobs = parse.definite_clauses(parse.parse(kbtext))
     kb.extend(kbkb)
+    indexed_kb = abduction.index_by_consequent_predicate(kbkb, [])
 
-if args.kbpickle:
-    kbkb, kbobs = parse.definite_clauses(cPickle.load(args.kbpickle))
-    kb.extend(kbkb)
-
+if args.kbmcdb:
+    import knowledgebase
+    indexed_kb = knowledgebase.mcdb_t(args.kbmcdb)
     logging.info("Knowledge base loaded.")
 
 # Explanation formula
 if args.expf_graph:
-    obs = unify.standardize(obs)
-    rkb = formula.obtain_relevant_kb(kb, obs, args.depth)
-    f = formula.clark_completion_t(rkb)
-    f.add_observations(obs)
-    f.visualize(sys.stdout)
+    # obs = unify.standardize(obs)
+    # rkb, nonab = formula.obtain_relevant_kb(kb, obs, args.depth)
+    # f = formula.clark_completion_t(rkb)
+    # f.add_observations(obs)
+    # f.visualize(sys.stdout)
+    #
+    # print("Nonabs: %s" % nonab, file=sys.stderr)
+
+    import networkx as nx
+    g = nx.DiGraph()
+    c = 0
+
+    for r in kb:
+
+        c += 1
+        dest = "^%d" % c
+
+        if len(parse.antecedent(r)) == 1:
+            dest = tuple(parse.consequent(r))
+
+        for a in parse.antecedent(r):
+            g.add_edge(tuple(a), dest)
+
+        if len(parse.antecedent(r)) > 1:
+            g.add_edge("^%d" % c, tuple(parse.consequent(r)))
+
+    for node in g.nodes_iter():
+        if len(g.successors(node)) > 1:
+            g.node[node]["color"] = "red"
+            g.node[node]["fontcolor"] = "red"
+
+    if not nx.is_directed_acyclic_graph(g):
+        print("Cycle detected.", file=sys.stderr)
+
+    ag = nx.to_agraph(g)
+    ag.layout()
+    ag.draw(sys.stdout)
 
     sys.exit()
 
@@ -162,7 +204,7 @@ else:
 
         # import may take a while.
         time_start = time.time()
-        solutions = etcetera_ilp.nbest_ilp(obs, kb, args.depth, args.nbest, args.ilp_verbose)
+        solutions = etcetera_ilp.nbest_ilp(obs, indexed_kb, args.depth, args.nbest, args.ilp_verbose)
 
     elif args.astar_search:
         import etcetera_search
@@ -171,9 +213,6 @@ else:
         solutions = etcetera_search.nbest_astar(obs, kb, indexed_kb, args.depth, args.nbest, args.astar_graph)
 
     else:
-        indexed_kb = abduction.index_by_consequent_predicate(kb, obs)
-        logging.info("Knowledge base indexed.")
-
         solutions = etcetera.nbest(obs, kb, indexed_kb, args.depth, args.nbest)
 
 logging.info(str(len(solutions)) + " solutions.")

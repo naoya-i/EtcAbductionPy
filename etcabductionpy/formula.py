@@ -16,15 +16,6 @@ def is_opr(x):
 def obtain_relevant_kb(kb, conj, maxdepth):
     """obtain relevant axioms to conj."""
 
-    # indexing.
-    ind = collections.defaultdict(list)
-
-    for rule in kb:
-        ind[parse.consequent(rule)[0]] += [rule]
-
-        for lit in parse.antecedent(rule):
-            ind[lit[0]] += [rule]
-
     # relevant reasoning.
     ret, bkon, queue = set(), set(), []
     etcized          = collections.defaultdict(int)
@@ -38,10 +29,10 @@ def obtain_relevant_kb(kb, conj, maxdepth):
     while len(queue) > 0:
         lv, p = queue.pop()
 
-        if p in bkon or parse.is_etc(p):
+        if (lv, p) in bkon or parse.is_etc(p):
             continue
 
-        bkon.add(p)
+        bkon.add((lv, p))
 
         if not parse.is_negated(p):
             etcized[p] += 0
@@ -50,7 +41,7 @@ def obtain_relevant_kb(kb, conj, maxdepth):
             continue
 
         # add rule to the result and prepare for next queue.
-        for relevant_rule in ind.get(p[0], []):
+        for relevant_rule in kb[p[0]]:
             theta = unify.unify(p, parse.consequent(relevant_rule))
 
             if theta == None:
@@ -61,8 +52,6 @@ def obtain_relevant_kb(kb, conj, maxdepth):
             relevant_rule = unify.standardize(unify.subst(theta, relevant_rule))
 
             ret.add(parse.list2tuple(relevant_rule))
-            #
-            # queue += [parse.consequent(relevant_rule)]
 
             for lit in parse.antecedent(relevant_rule):
                 if not parse.is_etc(tuple(lit)):

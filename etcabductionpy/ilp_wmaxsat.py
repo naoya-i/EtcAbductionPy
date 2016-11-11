@@ -69,7 +69,7 @@ class ilp_wmaxsat_solver_t:
             #
             # add new solution (if any).
             if self.gm.SolCount == 0:
-                yield []
+                yield None
                 break
 
             if self.gm.Status != gurobipy.GRB.Status.OPTIMAL:
@@ -204,7 +204,10 @@ class ilp_wmaxsat_solver_t:
                 self._encode_and(f, node)
 
                 for child_node in f.nxg.successors(node):
-                    conseq_minimizer[child_node] += [self.vars[node]]
+                    if formula.is_opr(child_node[1]):
+                        continue
+
+                    conseq_minimizer[child_node[1]] += [self.vars[node]]
 
             elif "v" == node[1]:
                 self._encode_or(f, node)
@@ -249,10 +252,16 @@ class ilp_wmaxsat_solver_t:
         self.gm.update()
 
     def _nvar(self, node):
-        if parse.is_negated(node[1]):
-            return 1.0 - self.vars[node]
+        if formula.is_opr(node[1]):
+            return self.vars[node]
 
-        return self.vars[node]
+        return self._lvar(node[1])
+
+    def _lvar(self, lit):
+        if parse.is_negated(lit):
+            return 1.0 - self.lit_vars[parse.atom(lit)]
+
+        return self.lit_vars[lit]
 
     def _encode_costvars(self, f):
         for lit, cvar in self.cost_vars.iteritems():
@@ -299,8 +308,8 @@ class ilp_wmaxsat_solver_t:
                     self.gm.addConstr(gurobipy.quicksum(xvars) <= len(xvars)*cvar)
 
     def _encode_conseqmin(self, conseq_minimizer):
-        for node, dependent_nodes in conseq_minimizer.iteritems():
-            self.gm.addConstr(self._nvar(node) <= gurobipy.quicksum(dependent_nodes))
+        for lit, dependent_nodes in conseq_minimizer.iteritems():
+            self.gm.addConstr(self._lvar(lit) <= gurobipy.quicksum(dependent_nodes))
 
     def _encode_and(self, f, node):
         # c=1 <=> x1=1 \land x2=1 \land ... \land xn=1

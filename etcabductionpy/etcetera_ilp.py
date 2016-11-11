@@ -76,7 +76,7 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False):
     sols = []
 
     for sol in wms.find_solutions(n):
-        if len(sol.literals) == 0:
+        if sol == None:
             logging.info("  No more solution.")
 
             if verbose:
