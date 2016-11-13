@@ -161,6 +161,9 @@ def display(sexp):
 def is_etc(l):
     return (isinstance(l, tuple) or isinstance(l, list)) and len(l) > 1 and isinstance(l[1], float) and isinstance(l[0], basestring) and l[0].startswith("etc")
 
+def is_propositional(l):
+    return len(l) == 1
+
 def is_negated(l):
     return l[0].startswith("~")
 

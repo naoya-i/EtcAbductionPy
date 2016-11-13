@@ -99,8 +99,8 @@ def generate(args, num_atoms, num_links):
 ;
 """ % (
     nx.dag_longest_path_length(g),
-    num_atoms,
-    num_links,
+    len(g.nodes()),
+    len(g.edges()),
     len(obs),
     len(kb),
     1.0*sum(avg_branch) / len(avg_branch),
@@ -120,13 +120,13 @@ def main():
                    type=int,
                    default=10,
                    help='Number of samples.')
-    argparser.add_argument('-minn', '--minatoms',
+    argparser.add_argument('-mina', '--minatoms',
                    type=int,
-                   default=100,
+                   default=1000,
                    help='Minimum number of atoms.')
-    argparser.add_argument('-maxn', '--maxatoms',
+    argparser.add_argument('-maxa', '--maxatoms',
                    type=int,
-                   default=10000,
+                   default=40000,
                    help='Maximum number of atoms.')
     argparser.add_argument('-mino', '--minobs',
                    type=int,
@@ -144,7 +144,7 @@ def main():
 
     for i in xrange(args.nsample):
         num_atoms = random.randint(args.minatoms, args.maxatoms)
-        num_links = random.randint(num_atoms, 100000)
+        num_links = random.randint(num_atoms, 600000)
 
         print >>sys.stderr, "Generating axioms..."
         print >>sys.stderr, "# atoms: %d, # links: %d" % (num_atoms, num_links)

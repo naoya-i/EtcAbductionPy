@@ -354,14 +354,14 @@ class ilp_wmaxsat_solver_t:
         xvar, yvar = [self._nvar(x) for x in f.nxg.successors(node)]
 
         if len(f.nxg.successors(node)) == 0:
-            self.gm.addConstr(xvar <= yvar)
-            self.gm.addConstr(yvar <= xvar)
+            self.gm.addConstr(1 <= 1-xvar + yvar)
+            self.gm.addConstr(1 <=   xvar + 1-yvar)
 
         else:
-            self.gm.addConstr(1-xvar + 1-yvar +   dvar >= 1, name="<=>")
-            self.gm.addConstr(  xvar +   yvar +   dvar >= 1, name="<=>")
-            self.gm.addConstr(  xvar + 1-yvar + 1-dvar >= 1, name="<=>")
-            self.gm.addConstr(1-xvar +   yvar + 1-dvar >= 1, name="<=>")
+            self.gm.addConstr(dvar <= 1-xvar +   yvar, name="<=>") # dvar=1 => xvar=0 v yvar=1
+            self.gm.addConstr(dvar <=   xvar + 1-yvar, name="<=>") # dvar=1 => xvar=1 v yvar=0
+            self.gm.addConstr(1-xvar +   yvar <= 2*dvar, name="<=>") # dvar=1 <= xvar=0 v yvar=1
+            self.gm.addConstr(  xvar + 1-yvar <= 2*dvar, name="<=>") # dvar=1 <= xvar=1 v yvar=0
 
     def _encode_transitivity(self, x, y, z, lazy=False):
 
