@@ -9,6 +9,7 @@ import bisect
 import itertools
 import parse
 import formula
+import knowledgebase
 import ilp_wmaxsat
 
 import gurobipy
@@ -35,11 +36,10 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = Fa
     sw = stopwatch_t()
 
     sw.start()
-    obs = unify.standardize(obs)
 
     if relreason:
         logging.info("Relevant reasoning...")
-        rkb, facts, nonab = formula.obtain_relevant_kb(kb, obs, maxdepth)
+        rkb, facts, nonab = knowledgebase.obtain_relevant_kb(kb, obs, maxdepth)
 
     else:
         logging.info("Loading axioms...")
@@ -59,7 +59,6 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = Fa
     f.add_facts(facts)
     f.add_observations(obs)
     f.add_nonabs(nonab)
-    f.scan_unifiables()
     sw.stop("comp")
 
     # create ilp problem.
@@ -108,7 +107,7 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = Fa
         sols += [sol.literals]
 
         if verbose:
-            wms.print_costvars()
+            wms.print_abduciblevars()
 
 
     sw.stop("ilpsol")
