@@ -30,20 +30,37 @@ class stopwatch_t:
     def stop(self, name):
         self.records[name] = time.time() - self.time
 
-def nbest_ilp(obs, kb, maxdepth, n, verbose = False):
+def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = False):
 
     sw = stopwatch_t()
 
-    logging.info("Relevant reasoning...")
-
     sw.start()
     obs = unify.standardize(obs)
-    rkb, nonab = formula.obtain_relevant_kb(kb, obs, maxdepth)
-    f = formula.clark_completion_t(rkb)
+
+    if relreason:
+        logging.info("Relevant reasoning...")
+        rkb, facts, nonab = formula.obtain_relevant_kb(kb, obs, maxdepth)
+
+    else:
+        logging.info("Loading axioms...")
+        rkb, facts, nonab = kb.get_axioms(), kb.get_facts(), []
+
+    sw.stop("relrea")
+
+    sw.start()
+    if cnf:
+        logging.info("Clark completion (CNF mode) on %d axioms..." % len(rkb))
+        f = formula.clark_completion_cnf_t(rkb)
+
+    else:
+        logging.info("Clark completion on %d axioms..." % len(rkb))
+        f = formula.clark_completion_t(rkb)
+
+    f.add_facts(facts)
     f.add_observations(obs)
     f.add_nonabs(nonab)
     f.scan_unifiables()
-    sw.stop("gen_expf")
+    sw.stop("comp")
 
     # create ilp problem.
     logging.info("Converting the WMSAT into ILP...")
@@ -96,8 +113,9 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False):
 
     sw.stop("ilpsol")
 
-    logging.info("  Inference time: [gen-expf] %.2f, [gen-ilp] %.2f, [opt] %.2f" % (
-        sw.records["gen_expf"],
+    logging.info("  Inference time: [relrea] %.2f, [comp] %.2f, [gen-ilp] %.2f, [opt] %.2f" % (
+        sw.records["relrea"],
+        sw.records["comp"],
         sw.records["ilpconv"],
         sw.records["ilpsol"],
         ))

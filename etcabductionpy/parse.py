@@ -175,7 +175,13 @@ def arity(l):
 
 def negate(l):
     ret = list(l)
-    ret[0] = "~" + ret[0]
+    
+    if ret[0].startswith("~"):
+        ret[0] = ret[0][1:]
+
+    else:
+        ret[0] = "~" + ret[0]
+
     return tuple(ret)
 
 def atom(l):

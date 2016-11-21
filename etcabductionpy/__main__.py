@@ -77,6 +77,14 @@ argparser.add_argument('-asg','--astar-graph',
                        action='store_true',
                        help='Output graph of AO* solutions in .dot format')
 
+argparser.add_argument('-lnr','--ilp-no-relreason',
+                       action='store_true',
+                       help='Do not perform relevant reasoning.')
+
+argparser.add_argument('-lcnf','--ilp-use-cnf',
+                       action='store_true',
+                       help='Use CNF for clark completion.')
+
 argparser.add_argument('-lv','--ilp-verbose',
                        action='store_true',
                        help='Output ILP solver log')
@@ -124,6 +132,11 @@ if args.kbcache:
 inlines = args.infile.readlines()
 intext = "".join(inlines)
 kb, obs = parse.definite_clauses(parse.parse(intext))
+
+logging.info("Parameters:")
+
+for k, v in sorted(vars(args).iteritems(), key=lambda x: x[0]):
+    logging.info("  %s: %s" % (k, v if not type(v) == file else v.name))
 
 logging.info("Loading knowledge base...")
 
@@ -204,7 +217,7 @@ else:
 
         # import may take a while.
         time_start = time.time()
-        solutions = etcetera_ilp.nbest_ilp(obs, indexed_kb, args.depth, args.nbest, args.ilp_verbose)
+        solutions = etcetera_ilp.nbest_ilp(obs, indexed_kb, args.depth, args.nbest, args.ilp_verbose, args.ilp_use_cnf, not args.ilp_no_relreason)
 
     elif args.astar_search:
         import etcetera_search

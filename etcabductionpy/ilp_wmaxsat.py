@@ -72,9 +72,6 @@ class ilp_wmaxsat_solver_t:
                 yield None
                 break
 
-            if self.gm.Status != gurobipy.GRB.Status.OPTIMAL:
-                continue
-
             sol = solution_t(self)
 
             # assertion.
@@ -315,7 +312,7 @@ class ilp_wmaxsat_solver_t:
         # c=1 <=> x1=1 \land x2=1 \land ... \land xn=1
         cvar, xvars = self._nvar(node), [self._nvar(x) for x in f.nxg.successors(node)]
 
-        if len(f.nxg.successors(node)) == 0:
+        if len(f.nxg.predecessors(node)) == 0:
             self.gm.addConstr(gurobipy.quicksum(xvars) >= len(xvars))
 
         else:
@@ -326,7 +323,7 @@ class ilp_wmaxsat_solver_t:
         # dvar=1 <=> c1=1 \lor c2=1 \lor ... \lor cn=1
         dvar, xvars = self._nvar(node), [self._nvar(x) for x in f.nxg.successors(node)]
 
-        if len(f.nxg.successors(node)) == 0:
+        if len(f.nxg.predecessors(node)) == 0:
             self.gm.addConstr(gurobipy.quicksum(xvars) >= 1)
 
         else:
@@ -337,7 +334,7 @@ class ilp_wmaxsat_solver_t:
         # dvar=1 <=> c1=1 \lxor c2=1 \lxor ... \lxor cn=1
         dvar, xvars = self._nvar(node), [self._nvar(x) for x in f.nxg.successors(node)]
 
-        if len(f.nxg.successors(node)) == 0:
+        if len(f.nxg.predecessors(node)) == 0:
             self.gm.addConstr(gurobipy.quicksum(xvars) >= 1)
 
         else:
@@ -353,7 +350,7 @@ class ilp_wmaxsat_solver_t:
         dvar       = self._nvar(node)
         xvar, yvar = [self._nvar(x) for x in f.nxg.successors(node)]
 
-        if len(f.nxg.successors(node)) == 0:
+        if len(f.nxg.predecessors(node)) == 0:
             self.gm.addConstr(1 <= 1-xvar + yvar)
             self.gm.addConstr(1 <=   xvar + 1-yvar)
 

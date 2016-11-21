@@ -15,10 +15,9 @@ def is_opr(x):
 
 def obtain_relevant_kb(kb, conj, maxdepth):
     """obtain relevant axioms to conj."""
-    return kb.get_axioms(), []
 
     # relevant reasoning.
-    ret, bkon, queue = [], set(), []
+    ret, bkon, queue = set(), set(), []
     etcized          = collections.defaultdict(int)
 
     # add observations to the queue.
@@ -51,7 +50,7 @@ def obtain_relevant_kb(kb, conj, maxdepth):
 
             etcized[p] += 1
 
-            ret += [relevant_rule]
+            ret.add(parse.list2tuple(relevant_rule))
 
             for lit in parse.antecedent(relevant_rule):
                 lit = tuple(lit)
@@ -59,7 +58,7 @@ def obtain_relevant_kb(kb, conj, maxdepth):
                 if not parse.is_etc(lit):
                     queue += [(lv+1, lit)]
 
-    return ret, [l for l in etcized if etcized[l] == 0]
+    return list(ret), kb.get_facts(), [l for l in etcized if etcized[l] == 0]
 
 class formula_t(object):
     def __init__(self):
@@ -81,12 +80,21 @@ class formula_t(object):
 
     def visualize(self, out):
         '''visualize the formula as a DAG.'''
-        gvz = nx.to_agraph(self.nxg)
+        gvz = nx.nx_agraph.to_agraph(self.nxg)
         gvz.layout()
         gvz.draw(out)
 
     def print_info(self):
         print nx.info(self.nxg)
+
+    def add_facts(self, facts):
+        for f in facts:
+            if f[0] == "or":
+                gnid_or = self._create_node("v")
+
+                for l in f[1:]:
+                    gnid_l = self._create_node(tuple(l))
+                    self.nxg.add_edge(gnid_or, gnid_l)
 
     def scan_unifiables(self):
         '''store list of literals with the same predicates.'''
@@ -116,7 +124,7 @@ class formula_t(object):
                     self.unifiable_var_graph.add_edge(t, theta[t])
 
     def visualize_var_graph(self, out):
-        gvz = nx.to_agraph(self.unifiable_var_graph)
+        gvz = nx.nx_agraph.to_agraph(self.unifiable_var_graph)
         gvz.layout()
         gvz.draw(out)
 
@@ -201,6 +209,61 @@ class clark_completion_t(formula_t):
                 for literal in body:
                     gnid_lit = self._create_node(tuple(literal))
                     self.nxg.add_edge(gnid_body_from, gnid_lit)
+
+    def add_observations(self, obs):
+
+        # add observations.
+        gnid_conj = self._create_node("^")
+
+        for ob in obs:
+            self.nxg.add_edge(gnid_conj, self._create_node(tuple(ob)))
+
+    def add_nonabs(self, nonab):
+
+        # add observations.
+        gnid_conj = self._create_node("^")
+
+        for l in nonab:
+            self.nxg.add_edge(gnid_conj, self._create_node(parse.negate(l)))
+
+class clark_completion_cnf_t(formula_t):
+    """Assumes knowledge base is in the form of Normal Logic Programs."""
+
+    def __init__(self, kb):
+        super(clark_completion_cnf_t, self).__init__()
+
+        explanations = collections.defaultdict(list)
+
+        # collect a set of bodies with the same head.
+        for rule in kb:
+            explanations[tuple(parse.consequent(rule))] += [parse.antecedent(rule)]
+
+        # complete knowledge base.
+        for head, bodies in explanations.iteritems():
+
+            # h <=> e1 v e2 v ...
+
+            # from each body to head.
+            # e1 => h, e2 => h, ...
+            for body in bodies:
+                gnid_or   = self._create_node("v")
+                gnid_head = self._create_node(tuple(head))
+                self.nxg.add_edge(gnid_or, gnid_head)
+
+                for b in body:
+                    gnid_b = self._create_node(tuple(parse.negate(b)))
+                    self.nxg.add_edge(gnid_or, gnid_b)
+
+            # h => e1a v e2a v ...
+            # h => e1a v e2b v ...
+            for body in itertools.product(*bodies):
+                gnid_or   = self._create_node("v")
+                gnid_head = self._create_node(tuple(parse.negate(head)))
+                self.nxg.add_edge(gnid_or, gnid_head)
+
+                for b in body:
+                    gnid_b = self._create_node(tuple(b))
+                    self.nxg.add_edge(gnid_or, gnid_b)
 
     def add_observations(self, obs):
 

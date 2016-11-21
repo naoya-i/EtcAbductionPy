@@ -5,15 +5,24 @@ import sys
 import os
 import collections
 import math
+import itertools
 
 import networkx as nx
+from networkx import bipartite
 
 random.seed(19851008)
 
 def get_prob(mean):
     return min(max(1e-8, random.gauss(mean, 0.05)), 1.0)
 
-def generate(args, num_atoms, num_links):
+def generate(args):
+
+    # determine the number of nodes and edges.
+    num_atoms = random.randint(args.minatoms, args.maxatoms)
+    num_links = random.randint(num_atoms, args.maxedges)
+
+    print >>sys.stderr, "Generating axioms..."
+    print >>sys.stderr, "# atoms: %d, # links: %d" % (num_atoms, num_links)
 
     # create a random DAG.
     g = nx.gnm_random_graph(num_atoms, num_links, directed=True)
@@ -35,20 +44,13 @@ def generate(args, num_atoms, num_links):
         if 0 == len(g.predecessors(n)):
             head += [n]
 
-    # Resample the observation and reduce the graph.
+    # resample the observation and reduce the graph.
     obs = random.sample(obs,
         random.randint(
             min(args.minobs, len(obs)),
             min(args.maxobs, len(obs)),
         )
     )
-    nodes = []
-    nodes += obs
-
-    for ob in obs:
-        nodes += nx.ancestors(g, ob)
-
-    g = g.subgraph(nodes)
 
     kb = []
     avg_branch = []
@@ -57,11 +59,6 @@ def generate(args, num_atoms, num_links):
     for n in g.nodes_iter():
 
         branch = 0
-
-        # prior.
-        kb += ["(if (and (etc_%s %.8f)) (%s))" % (
-            n, get_prob(0.1), n,
-        )]
         branch += 1
 
         # posterior.
@@ -84,6 +81,13 @@ def generate(args, num_atoms, num_links):
                 antecedents = antecedents[len(focus):]
 
         avg_branch += [branch]
+
+    for n in g.nodes_iter():
+
+        # prior.
+        kb += ["(if (and (etc_%s %.8f)) (%s))" % (
+            n, get_prob(0.1), n,
+        )]
 
     kb = ["""; Automatically generated synthetic knowledge base.
 ;
@@ -120,18 +124,26 @@ def main():
                    type=int,
                    default=10,
                    help='Number of samples.')
+    argparser.add_argument('-b', '--samplebaseid',
+                   type=int,
+                   default=0,
+                   help='Base ID.')
     argparser.add_argument('-mina', '--minatoms',
                    type=int,
-                   default=1000,
+                   default=100,
                    help='Minimum number of atoms.')
     argparser.add_argument('-maxa', '--maxatoms',
                    type=int,
                    default=40000,
                    help='Maximum number of atoms.')
+    argparser.add_argument('-maxe', '--maxedges',
+                   type=int,
+                   default=600000,
+                   help='Maximum number of edges.')
     argparser.add_argument('-mino', '--minobs',
                    type=int,
                    default=6,
-                   help='Maximum number of observations.')
+                   help='Minimum number of observations.')
     argparser.add_argument('-maxo', '--maxobs',
                    type=int,
                    default=12,
@@ -143,17 +155,12 @@ def main():
     args = argparser.parse_args()
 
     for i in xrange(args.nsample):
-        num_atoms = random.randint(args.minatoms, args.maxatoms)
-        num_links = random.randint(num_atoms, 600000)
+        fn_kb, fn_obs = "data/synthetic/kb%d.lisp" % (1+args.samplebaseid+i), "data/synthetic/obs%d.lisp" % (1+args.samplebaseid+i)
 
-        print >>sys.stderr, "Generating axioms..."
-        print >>sys.stderr, "# atoms: %d, # links: %d" % (num_atoms, num_links)
-
-        fn_kb, fn_obs = "data/synthetic/kb%d.lisp" % (1+i), "data/synthetic/obs%d.lisp" % (1+i)
-
-        kb, obs = generate(args, num_atoms, num_links)
+        kb, obs = generate(args)
 
         print >>sys.stderr, "# obs: %d, # axioms: %d" % (len(obs), len(kb))
+        print >>sys.stderr, "Writing to %s... " % fn_kb
 
         with open(fn_kb, "w") as f:
             for r in kb:
