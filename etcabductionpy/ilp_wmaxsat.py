@@ -30,7 +30,7 @@ class ilp_wmaxsat_solver_t:
         self.formula = None
 
     def encode(self, f):
-        '''Encode the WMAXSAT problem of f as an ILP problem.'''
+        '''encode the WMAXSAT problem of f as an ILP problem.'''
         self.formula = f
 
         logging.info("  Variables...")
@@ -43,7 +43,7 @@ class ilp_wmaxsat_solver_t:
         self._encode_objective(f)
 
     def write_lp(self, out):
-        '''Write the encoded problem into a file.'''
+        '''write the encoded problem into a file.'''
         self.gm.write(out)
 
     def find_solutions(self, n, denial = 2):
@@ -92,8 +92,7 @@ class ilp_wmaxsat_solver_t:
                         ]) <= len(sig)-1)
 
     def print_iis(self):
-
-        # output IIS for debug.
+        '''output IIS for debug.'''
         self.gm.computeIIS()
 
         for c in self.gm.getConstrs():
@@ -101,6 +100,7 @@ class ilp_wmaxsat_solver_t:
                 print("Infeasible: %s" % c.getAttr(gurobipy.GRB.Attr.ConstrName))
 
     def print_abduciblevars(self):
+        '''print current solution.'''
         for atom, var in self.atom_vars.iteritems():
             if var.X > 0.5:
                 logging.info("Atom: %s" % repr(atom))
@@ -109,18 +109,8 @@ class ilp_wmaxsat_solver_t:
             if var.X > 0.5:
                 logging.info("Payment: %s" % repr(atom))
 
-    def _create_nvar(self, f, node):
-        if formula.is_opr(node[1]):
-            return self.gm.addVar(vtype=gurobipy.GRB.BINARY, name="%s%d" % (node[1], node[0]))
-
-        l = parse.atom(node[1])
-
-        if not self.atom_vars.has_key(l):
-            self.atom_vars[l] = self.gm.addVar(vtype=gurobipy.GRB.BINARY, name=repr(l))
-
-        return self.atom_vars[l]
-
     def _nvar(self, node):
+        '''return node variable.'''
         if formula.is_opr(node[1]):
             return self.node_vars[node]
 
@@ -130,6 +120,7 @@ class ilp_wmaxsat_solver_t:
         return self.atom_vars[node[1]]
 
     def _encode_variables(self, f):
+        '''encode ILP variables.'''
         self.c0var = self.gm.addVar(vtype=gurobipy.GRB.BINARY, lb=0.0, ub=0.0)
         self.c1var = self.gm.addVar(vtype=gurobipy.GRB.BINARY, lb=1.0, ub=1.0)
 
@@ -137,7 +128,17 @@ class ilp_wmaxsat_solver_t:
         for node in f.nxg.nodes_iter():
 
             # create node variable.
-            self.node_vars[node] = self._create_nvar(f, node)
+            if formula.is_opr(node[1]):
+                # always fresh.
+                self.node_vars[node] =  self.gm.addVar(vtype=gurobipy.GRB.BINARY, name="%s%d" % (node[1], node[0]))
+
+            else:
+                a = parse.atom(node[1])
+
+                if not self.atom_vars.has_key(a):
+                    self.atom_vars[a] = self.gm.addVar(vtype=gurobipy.GRB.BINARY, name=repr(a))
+
+                self.node_vars[node] = self.atom_vars[a]
 
             # create satisfiability variable (for etcetera literals).
             if parse.is_etc(node[1]):
@@ -146,7 +147,7 @@ class ilp_wmaxsat_solver_t:
         self.gm.update()
 
     def _encode_constraints(self, f):
-
+        '''encode ILP constraints.'''
         conseq_minimizer = collections.defaultdict(list)
 
         # for logical operators.
@@ -192,7 +193,7 @@ class ilp_wmaxsat_solver_t:
         self.gm.update()
 
     def _encode_and(self, f, node):
-        # c=1 <=> x1=1 \land x2=1 \land ... \land xn=1
+        '''c=1 <=> x1=1 \land x2=1 \land ... \land xn=1'''
         cvar, xvars = self._nvar(node), [self._nvar(x) for x in f.nxg.successors(node)]
 
         if len(f.nxg.predecessors(node)) == 0:
@@ -203,7 +204,7 @@ class ilp_wmaxsat_solver_t:
             self.gm.addConstr(gurobipy.quicksum(xvars) - len(xvars) + 1 <= cvar, name="^")
 
     def _encode_or(self, f, node):
-        # dvar=1 <=> c1=1 \lor c2=1 \lor ... \lor cn=1
+        '''dvar=1 <=> c1=1 \lor c2=1 \lor ... \lor cn=1'''
         dvar, xvars = self._nvar(node), [self._nvar(x) for x in f.nxg.successors(node)]
 
         if len(f.nxg.predecessors(node)) == 0:
@@ -214,7 +215,7 @@ class ilp_wmaxsat_solver_t:
             self.gm.addConstr(gurobipy.quicksum(xvars) <= len(xvars)*dvar, name="v")
 
     def _encode_xor(self, f, node):
-        # dvar=1 <=> c1=1 \lxor c2=1 \lxor ... \lxor cn=1
+        '''dvar=1 <=> c1=1 \lxor c2=1 \lxor ... \lxor cn=1'''
         dvar, xvars = self._nvar(node), [self._nvar(x) for x in f.nxg.successors(node)]
 
         if len(f.nxg.predecessors(node)) == 0:
@@ -229,7 +230,7 @@ class ilp_wmaxsat_solver_t:
             self.gm.addConstr(gurobipy.quicksum(xvars) <= 1)
 
     def _encode_dimp(self, f, node):
-        # dvar=1 <=> (xvar=1 <=> yvar=1)
+        '''dvar=1 <=> (xvar=1 <=> yvar=1)'''
         dvar       = self._nvar(node)
         xvar, yvar = [self._nvar(x) for x in f.nxg.successors(node)]
 
@@ -251,8 +252,11 @@ class ilp_wmaxsat_solver_t:
 class solution_t:
     def __init__(self, solver):
         self.solver = solver
-        self.raw = self._get_raw_sol()
-        self.raw_literals = [tuple(l) for l in self.raw]
+        self.raw = [
+            tuple(k)
+            for k, var in self.solver.atom_vars.iteritems()
+            if var.X > 0.5
+        ]
 
         self.literals_etc, self.literals_nonetc = [], []
 
@@ -266,6 +270,7 @@ class solution_t:
         self.literals = self.literals_etc+self.literals_nonetc
 
     def check_sum(self):
+        '''ensure that the sum of weights of literals is equal to the objective (debug purpose).'''
         p1, p2, p3 = math.log(etcetera.jointProbability(self.literals)), sum([v.obj for v in self.solver.gm.getVars() if v.X > 0.5]), self.solver.gm.objVal
 
         if abs(p1-p2) >= 1e-6 or abs(p2-p3) >= 1e-6:
@@ -277,14 +282,12 @@ class solution_t:
         return True
 
     def get_signature(self):
-        return frozenset([l for l in self.raw_literals if parse.is_etc(l)])
+        '''return a unique signature for this solution.'''
+        return frozenset([l for l in self.raw if parse.is_etc(l)])
 
     def _get_raw_sol(self):
-        return [
-            k
-            for k, var in self.solver.atom_vars.iteritems()
-            if var.X > 0.5
-        ]
+        '''return raw solution.'''
+        return
 
 if "__main__" == __name__:
     #
