@@ -69,14 +69,6 @@ argparser.add_argument('-l', '--ilp',
                        action='store_true',
                        help='Use ILP solver to get solution(s)')
 
-argparser.add_argument('-as', '--astar-search',
-                       action='store_true',
-                       help='Use A* search to get solution(s)')
-
-argparser.add_argument('-asg','--astar-graph',
-                       action='store_true',
-                       help='Output graph of AO* solutions in .dot format')
-
 argparser.add_argument('-lnr','--ilp-no-relreason',
                        action='store_true',
                        help='Do not perform relevant reasoning.')
@@ -88,10 +80,6 @@ argparser.add_argument('-lcnf','--ilp-use-cnf',
 argparser.add_argument('-lv','--ilp-verbose',
                        action='store_true',
                        help='Output ILP solver log')
-
-argparser.add_argument('-expfg','--expf-graph',
-                       action='store_true',
-                       help='Output graph of explanation formula in .dot format')
 
 argparser.add_argument('-f', '--forward',
                        action='store_true',
@@ -152,47 +140,6 @@ if args.kbmcdb:
     indexed_kb = knowledgebase.mcdb_t(args.kbmcdb)
     logging.info("Knowledge base loaded.")
 
-# Explanation formula
-if args.expf_graph:
-    # obs = unify.standardize(obs)
-    # rkb, nonab = formula.obtain_relevant_kb(kb, obs, args.depth)
-    # f = formula.clark_completion_t(rkb)
-    # f.add_observations(obs)
-    # f.visualize(sys.stdout)
-    #
-    # print("Nonabs: %s" % nonab, file=sys.stderr)
-
-    import networkx as nx
-    g = nx.DiGraph()
-    c = 0
-
-    for r in kb:
-
-        c += 1
-        dest = "^%d" % c
-
-        if len(parse.antecedent(r)) == 1:
-            dest = tuple(parse.consequent(r))
-
-        for a in parse.antecedent(r):
-            g.add_edge(tuple(a), dest)
-
-        if len(parse.antecedent(r)) > 1:
-            g.add_edge("^%d" % c, tuple(parse.consequent(r)))
-
-    for node in g.nodes_iter():
-        if len(g.successors(node)) > 1:
-            g.node[node]["color"] = "red"
-            g.node[node]["fontcolor"] = "red"
-
-    if not nx.is_directed_acyclic_graph(g):
-        print("Cycle detected.", file=sys.stderr)
-
-    ag = nx.to_agraph(g)
-    ag.layout()
-    ag.draw(sys.stdout)
-
-    sys.exit()
 
 # Handle forward
 
@@ -218,12 +165,6 @@ else:
         # import may take a while.
         time_start = time.time()
         solutions = etcetera_ilp.nbest_ilp(obs, indexed_kb, args.depth, args.nbest, args.ilp_verbose, args.ilp_use_cnf, not args.ilp_no_relreason)
-
-    elif args.astar_search:
-        import etcetera_search
-
-        time_start = time.time()
-        solutions = etcetera_search.nbest_astar(obs, kb, indexed_kb, args.depth, args.nbest, args.astar_graph)
 
     else:
         solutions = etcetera.nbest(obs, kb, indexed_kb, args.depth, args.nbest)
