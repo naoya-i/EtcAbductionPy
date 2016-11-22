@@ -65,6 +65,10 @@ argparser.add_argument('-a', '--all',
                        action='store_true',
                        help='Generate all solutions')
 
+argparser.add_argument('-f', '--forward',
+                       action='store_true',
+                       help='Forward chain from INFILE with KB')
+
 argparser.add_argument('-l', '--ilp',
                        action='store_true',
                        help='Use ILP solver to get solution(s)')
@@ -84,10 +88,6 @@ argparser.add_argument('-lnr','--ilp-no-relreason',
 argparser.add_argument('-lcnf','--ilp-use-cnf',
                        action='store_true',
                        help='Use CNF for clark completion.')
-
-argparser.add_argument('-f', '--forward',
-                       action='store_true',
-                       help='Forward chain from INFILE with KB')
 
 args = argparser.parse_args()
 
