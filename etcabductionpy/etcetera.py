@@ -12,24 +12,10 @@ import time
 def etcAbduction(obs, kb, indexed_kb, maxdepth, skolemize = True):
     '''Trying something faster'''
     res = []
-
-    time_start = time.time()
-
     listoflists = [abduction.and_or_leaflists([ob], indexed_kb, maxdepth) for ob in obs]
-
     for u in itertools.product(*listoflists):
         u = list(itertools.chain.from_iterable(u))
-        hypotheses = abduction.crunch(u)
-
-        # check if the solution contains etcetera literals only.
-        for hypothesis in hypotheses:
-            for literal in hypothesis:
-                if not parse.is_etc(literal):
-                    break
-
-            else:
-                res += [hypothesis]
-
+        res.extend(abduction.crunch(u))
     res.sort(key=lambda item: jointProbability(item), reverse=True)
     if skolemize:
         return [unify.skolemize(r) for r in res]
@@ -64,22 +50,17 @@ def nbest(obs, kb, indexed_kb, maxdepth, n, skolemize = True):
         u = list(itertools.chain.from_iterable(u))
 
         # check if the solution contains etcetera literals only.
-        for literal in u:
-            if not parse.is_etc(literal):
-                break
-
-        else:
-            if bestCaseProbability(u) > pr2beat:
-                for solution in abduction.crunch(u):
-                    jpr = jointProbability(solution)
-                    if jpr > pr2beat:
-                        insertAt = bisect.bisect_left(nbestPr, jpr)
-                        nbest.insert(insertAt, solution)
-                        nbestPr.insert(insertAt, jpr)
-                        if len(nbest) > n:
-                            nbest.pop(0)
-                            nbestPr.pop(0)
-                            pr2beat = nbestPr[0] # only if full
+        if bestCaseProbability(u) > pr2beat:
+            for solution in abduction.crunch(u):
+                jpr = jointProbability(solution)
+                if jpr > pr2beat:
+                    insertAt = bisect.bisect_left(nbestPr, jpr)
+                    nbest.insert(insertAt, solution)
+                    nbestPr.insert(insertAt, jpr)
+                    if len(nbest) > n:
+                        nbest.pop(0)
+                        nbestPr.pop(0)
+                        pr2beat = nbestPr[0] # only if full
     nbest.reverse() # [0] is now highest
     if skolemize:
         return [unify.skolemize(r) for r in nbest]

@@ -31,7 +31,7 @@ class stopwatch_t:
     def stop(self, name):
         self.records[name] = time.time() - self.time
 
-def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = False):
+def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = False, show_non_etc = False):
 
     sw = stopwatch_t()
 
@@ -104,11 +104,10 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = Fa
         logging.info("  Got %d-best solution!" % (1+len(sols)))
 
         # sounds good.
-        sols += [sol.literals]
+        sols += [[l for l in sol.literals if show_non_etc or parse.is_etc(l)]]
 
         if verbose:
             wms.print_abduciblevars()
-
 
     sw.stop("ilpsol")
 

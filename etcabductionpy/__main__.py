@@ -69,6 +69,14 @@ argparser.add_argument('-l', '--ilp',
                        action='store_true',
                        help='Use ILP solver to get solution(s)')
 
+argparser.add_argument('-lv','--ilp-verbose',
+                      action='store_true',
+                      help='Output ILP solver log')
+
+argparser.add_argument('-lnonetc', '--ilp-show-nonetc',
+                      action='store_true',
+                      help='Show non-etcetera literals.')
+
 argparser.add_argument('-lnr','--ilp-no-relreason',
                        action='store_true',
                        help='Do not perform relevant reasoning.')
@@ -76,10 +84,6 @@ argparser.add_argument('-lnr','--ilp-no-relreason',
 argparser.add_argument('-lcnf','--ilp-use-cnf',
                        action='store_true',
                        help='Use CNF for clark completion.')
-
-argparser.add_argument('-lv','--ilp-verbose',
-                       action='store_true',
-                       help='Output ILP solver log')
 
 argparser.add_argument('-f', '--forward',
                        action='store_true',
@@ -104,14 +108,8 @@ if args.kbcache:
 
     logging.info("Indexing...")
 
-    import mcdb
-    mk = mcdb.make(args.kbcache)
-
-    for p, rules in abduction.index_by_consequent_predicate(kbkb, []).iteritems():
-        mk.add(p, cPickle.dumps(rules))
-
-    mk.add("__fact__", cPickle.dumps(kbfacts))
-    mk.finish()
+    import knowledgebase
+    knowledgebase.cache_kb(args.kbcache, kbkb, kbfacts)
 
     sys.exit()
 
@@ -133,7 +131,7 @@ if args.kb:
     kbtext = "".join(kblines)
     kbkb, kbobs = parse.definite_clauses(parse.parse(kbtext))
     kb.extend(kbkb)
-    indexed_kb = abduction.index_by_consequent_predicate(kbkb, [])
+    indexed_kb = abduction.index_by_consequent_predicate(kbkb)
 
 if args.kbmcdb:
     import knowledgebase
@@ -164,7 +162,7 @@ else:
 
         # import may take a while.
         time_start = time.time()
-        solutions = etcetera_ilp.nbest_ilp(obs, indexed_kb, args.depth, args.nbest, args.ilp_verbose, args.ilp_use_cnf, not args.ilp_no_relreason)
+        solutions = etcetera_ilp.nbest_ilp(obs, indexed_kb, args.depth, args.nbest, args.ilp_verbose, args.ilp_use_cnf, not args.ilp_no_relreason, args.ilp_show_nonetc)
 
     else:
         solutions = etcetera.nbest(obs, kb, indexed_kb, args.depth, args.nbest)

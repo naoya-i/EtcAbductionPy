@@ -19,41 +19,15 @@ def abduction(obs, kb, maxdepth, skolemize = True):
         return [unify.skolemize(r) for r in res]
     else:
         return res
-
-def index_by_consequent_predicate(kb, obs, everything_assumable = False):
+        
+def index_by_consequent_predicate(kb):
     res = {}
-
-    L = collections.defaultdict(int)
-    lowest_prior = 1
-
-    for ob in obs:
-        L[ob[0]] += 0
-
     for dc in kb:
         predicate = parse.consequent(dc)[0]
-
         if predicate in res:
             res[predicate].append(dc)
         else:
             res[predicate] = [dc]
-
-        # to invent unknown predicates.
-        L[parse.consequent(dc)[0]] += 1
-
-        for l in parse.antecedent(dc):
-            if parse.is_etc(l):
-                lowest_prior = min(lowest_prior, l[-1])
-
-            else:
-                if everything_assumable:
-                    L[l[0]] += 0
-
-    lowest_prior *= 0.1
-
-    for l in L:
-        if L[l] == 0:
-            res[l] = [["if", ["etc_INV_%s" % l, lowest_prior], [l]]]
-
     return res
 
 def and_or_leaflists(remaining, indexed_kb, depth, antecedents = [], assumptions = []):

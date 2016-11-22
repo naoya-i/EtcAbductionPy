@@ -18,20 +18,22 @@ The use of collections.deque makes S-expression parsing much faster.
 
 ## Knowledge base caching
 
+For large knowledge base. This function requires python-mcdb (https://github.com/gstrauss/mcdb).
+
 * `--kbcache [FILE]` or `-kc [FILE]`: create cache of knowledge base on FILE.
 
 
-    python etcabductionpy -k knowledge_base.lisp -kc knowledge_base.pickle
+    python etcabductionpy -k knowledge_base.lisp -kc knowledge_base.lisp.mcdb
 
 
-* `--kbpickle [FILE]` or `-kp [FILE]`: use cached knowledge base from FILE.
+* `--kbmcdb [FILE]` or `-km [FILE]`: use cached knowledge base from FILE.
 
 
-    python etcabductionpy -kp knowledge_base.pickle -d 4
+    python etcabductionpy -km knowledge_base.lisp.mcdb ...
 
 
 ## Integer Linear Programming-based inference for propositional abduction
 
 * `--ilp` or `-l`: use ILP solver (gurobi) to search the (n-)best solution(s).
+* `--ilp-show-nonetc` or `-lnonetc`: output non-etc literals.
 * `--ilp-verbose` or `-lv`: output an ILP solver log.
-* `--expf-graph` or `-expfg`: output graph of explanation formula in dot format.
