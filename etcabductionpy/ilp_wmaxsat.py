@@ -46,7 +46,7 @@ class ilp_wmaxsat_solver_t:
         '''write the encoded problem into a file.'''
         self.gm.write(out)
 
-    def find_solutions(self, n, denial = 2):
+    def find_solutions(self, n):
         '''find n-best solutions. '''
         sols = []
 
@@ -73,23 +73,12 @@ class ilp_wmaxsat_solver_t:
 
             # deny the current sol.
             if len(sols) < n:
-                if denial == 1:
-                    self.gm.addConstr(gurobipy.quicksum([
-                        var
-                        if var.X > 0.5 else
-                        1.0 - var
-                        for var in self.atom_vars.values()
-                        ]) <= len(self.atom_vars)-1)
-
-                else:
-                    sig = sol.get_signature()
-
-                    self.gm.addConstr(gurobipy.quicksum([
-                        self.atom_vars[l]
-                        if self.atom_vars[l].X > 0.5 else
-                        1.0 - self.atom_vars[l]
-                        for l in sig
-                        ]) <= len(sig)-1)
+                self.gm.addConstr(gurobipy.quicksum([
+                    var
+                    if var.X > 0.5 else
+                    1.0 - var
+                    for var in self.atom_vars.values()
+                    ]) <= len(self.atom_vars)-1)
 
     def print_iis(self):
         '''output IIS for debug.'''
