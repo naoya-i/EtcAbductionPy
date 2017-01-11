@@ -89,6 +89,14 @@ argparser.add_argument('-lcnf','--ilp-use-cnf',
                        action='store_true',
                        help='Use CNF for clark completion.')
 
+argparser.add_argument('-lnotrans', '--ilp-no-transitivity',
+                      action='store_true',
+                      help='Do not enforce equality transitivity.')
+
+argparser.add_argument('-llazytrans', '--ilp-lazy-transitivity',
+                      action='store_true',
+                      help='Use lazy constraints for equality transitivity.')
+
 args = argparser.parse_args()
 
 logging.basicConfig(
@@ -162,7 +170,7 @@ else:
 
         # import may take a while.
         time_start = time.time()
-        solutions = etcetera_ilp.nbest_ilp(obs, indexed_kb, args.depth, args.nbest, args.ilp_verbose, args.ilp_use_cnf, not args.ilp_no_relreason, args.ilp_show_nonetc)
+        solutions = etcetera_ilp.nbest_ilp(obs, indexed_kb, args)
 
     else:
         solutions = etcetera.nbest(obs, kb, indexed_kb, args.depth, args.nbest)

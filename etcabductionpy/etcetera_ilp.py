@@ -31,8 +31,7 @@ class stopwatch_t:
     def stop(self, name):
         self.records[name] = time.time() - self.time
 
-def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = False, show_non_etc = False):
-
+def nbest_ilp(obs, kb, args):
     sw = stopwatch_t()
 
     sw.start()
@@ -40,9 +39,9 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = Fa
     # Standardize the observations.
     obs = unify.standardize(obs)
 
-    if relreason:
+    if not args.ilp_no_relreason:
         logging.info("Relevant reasoning...")
-        rkb, facts, nonab = knowledgebase.obtain_relevant_kb(kb, obs, maxdepth)
+        rkb, facts, nonab = knowledgebase.obtain_relevant_kb(kb, obs, args.depth)
 
     else:
         logging.info("Loading axioms...")
@@ -51,13 +50,14 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = Fa
     sw.stop("relrea")
 
     sw.start()
-    if cnf:
+    if not args.ilp_use_cnf:
+        logging.info("Clark completion on %d axioms..." % len(rkb))
+        f = formula.clark_completion_t(rkb)
+
+    else:
         logging.info("Clark completion (CNF mode) on %d axioms..." % len(rkb))
         f = formula.clark_completion_cnf_t(rkb)
 
-    else:
-        logging.info("Clark completion on %d axioms..." % len(rkb))
-        f = formula.clark_completion_t(rkb)
 
     f.add_facts(facts)
     f.add_observations(obs)
@@ -71,7 +71,11 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = Fa
     sw.start()
     wms = ilp_wmaxsat.ilp_wmaxsat_solver_t()
 
-    if not verbose:
+    # set options.
+    wms.use_eqtransitivity = not args.ilp_no_transitivity
+    wms.use_lazyeqtrans    = args.ilp_lazy_transitivity
+
+    if not args.ilp_verbose:
         wms.gm.params.outputFlag = 0
 
     else:
@@ -85,7 +89,7 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = Fa
     logging.info("  ILP variables: %d" % (len(wms.gm.getVars()), ))
     logging.info("  ILP constraints: %d" % (len(wms.gm.getConstrs()), ))
 
-    if verbose:
+    if args.ilp_verbose:
         wms.write_lp("test.lp")
 
     #
@@ -95,11 +99,11 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = Fa
 
     sols = []
 
-    for sol in wms.find_solutions(n):
+    for sol in wms.find_solutions(args.nbest):
         if sol == None:
             logging.info("  No more solution.")
 
-            if verbose:
+            if args.ilp_verbose:
                 if wms.gm.getAttr(gurobipy.GRB.Attr.Status) == gurobipy.GRB.INFEASIBLE:
                     wms.print_iis()
 
@@ -108,9 +112,9 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = Fa
         logging.info("  Got %d-best solution!" % (1+len(sols)))
 
         # sounds good.
-        sols += [[l for l in sol.literals if show_non_etc or parse.is_etc(l)]]
+        sols += [[l for l in sol.literals if args.ilp_show_nonetc or parse.is_etc(l)]]
 
-        if verbose:
+        if args.ilp_verbose:
             wms.print_abduciblevars()
 
     sw.stop("ilpsol")

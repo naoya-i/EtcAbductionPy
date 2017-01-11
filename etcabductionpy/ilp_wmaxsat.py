@@ -30,6 +30,10 @@ class ilp_wmaxsat_solver_t:
 
         self.formula = None
 
+        # options.
+        self.use_eqtransitivity = True
+        self.use_lazyeqtrans = False
+
     def encode(self, f):
         '''encode the WMAXSAT problem of f as an ILP problem.'''
         self.formula = f
@@ -186,7 +190,7 @@ class ilp_wmaxsat_solver_t:
         # for equality variables.
         for cc in nx.connected_components(f.unifiable_var_graph):
             for v1, v2, v3 in itertools.combinations(cc, 3):
-                self._encode_eqtransitivity(v1, v2, v3, lazy=False)
+                self._encode_eqtransitivity(v1, v2, v3, lazy=True)
 
         # cost vars.
         self._encode_costvars(f)
@@ -338,6 +342,7 @@ class ilp_wmaxsat_solver_t:
         self.gm.addConstr(gurobipy.quicksum(xvars) <= len(xvars)*uvar)
 
     def _encode_eqtransitivity(self, x, y, z, lazy=False):
+
         # add transitivity constraints.
         v1, v2 = parse.varsort(x, y)
         vvar12 = self.atom_vars[("=", v1, v2)]
@@ -346,12 +351,14 @@ class ilp_wmaxsat_solver_t:
         v1, v2 = parse.varsort(x, z)
         vvar13 = self.atom_vars[("=", v1, v2)]
 
-        _func = self.gm.cbLazy if lazy else \
-                self.gm.addConstr
+        c1 = self.gm.addConstr(vvar12 + vvar23 - vvar13 - 1, gurobipy.GRB.LESS_EQUAL, 0)
+        c2 = self.gm.addConstr(vvar23 + vvar13 - vvar12 - 1, gurobipy.GRB.LESS_EQUAL, 0)
+        c3 = self.gm.addConstr(vvar13 + vvar12 - vvar23 - 1, gurobipy.GRB.LESS_EQUAL, 0)
 
-        _func(vvar12 + vvar23 - vvar13 - 1, gurobipy.GRB.LESS_EQUAL, 0)
-        _func(vvar23 + vvar13 - vvar12 - 1, gurobipy.GRB.LESS_EQUAL, 0)
-        _func(vvar13 + vvar12 - vvar23 - 1, gurobipy.GRB.LESS_EQUAL, 0)
+        if lazy:
+            c1.Lazy = 2
+            c2.Lazy = 2
+            c3.Lazy = 2
 
 class solution_t:
     def __init__(self, solver):
