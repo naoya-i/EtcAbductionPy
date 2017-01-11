@@ -20,6 +20,8 @@ class formula_t(object):
         self.levels = {}
         self.parents = {}
         self.dat2node = {}
+        self.unifiables = collections.defaultdict(list)
+        self.unifiable_var_graph = nx.Graph()
 
     def copy(self):
         f = formula_t()
@@ -32,6 +34,12 @@ class formula_t(object):
     def visualize(self, out):
         '''visualize the formula as a DAG.'''
         gvz = nx.nx_agraph.to_agraph(self.nxg)
+        gvz.layout()
+        gvz.draw(out)
+
+    def visualize_var_graph(self, out):
+        '''visualize unifiable variable graph.'''
+        gvz = nx.to_agraph(self.unifiable_var_graph)
         gvz.layout()
         gvz.draw(out)
 

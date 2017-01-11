@@ -59,6 +59,7 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = Fa
     f.add_facts(facts)
     f.add_observations(obs)
     f.add_nonabs(nonab)
+    f.scan_unifiables()
     sw.stop("comp")
 
     # create ilp problem.

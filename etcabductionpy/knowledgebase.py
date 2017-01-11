@@ -19,7 +19,7 @@ class text_t:
 
     def get_axioms(self):
         return self.dct.values()
-        
+
 class mcdb_t:
     def __init__(self, f):
         self.mcdb = mcdb.read(f)
@@ -75,8 +75,21 @@ def obtain_relevant_kb(kb, conj, maxdepth):
 
         # add rule to the result and prepare for next queue.
         for relevant_rule in kb[p[0]]:
+            # for first-order literal.
+            if not parse.is_propositional(p):
+
+                # instantiate the axiom.
+                theta = unify.unify(p, parse.consequent(relevant_rule))
+
+                if theta == None:
+                    continue
+
+                relevant_rule = unify.standardize(unify.subst(theta, relevant_rule))
+
+            # collect abducibles. mark `p` as an abducible.
             etcized[p] += 1
 
+            # add to the relevant axioms and continue reasoning.
             ret.add(parse.list2tuple(relevant_rule))
 
             for lit in parse.antecedent(relevant_rule):
