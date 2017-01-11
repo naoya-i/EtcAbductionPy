@@ -23,7 +23,8 @@ class ilp_wmaxsat_solver_t:
 
         self.node_vars = {}
         self.atom_vars = {}
-        self.sat_vars = {}
+        self.cost_vars = {}
+        self.uni_vars = collections.defaultdict(dict)
 
         self.c0var, self.c1var = None, None
 
@@ -94,7 +95,7 @@ class ilp_wmaxsat_solver_t:
             if var.X > 0.5:
                 logging.info("Atom: %s" % repr(atom))
 
-        for atom, var in self.sat_vars.iteritems():
+        for atom, var in self.cost_vars.iteritems():
             if var.X > 0.5:
                 logging.info("Payment: %s" % repr(atom))
 
@@ -131,7 +132,9 @@ class ilp_wmaxsat_solver_t:
 
             # create satisfiability variable (for etcetera literals).
             if parse.is_etc(node[1]):
-                self.sat_vars[node[1]] = self.node_vars[node]
+                self.cost_vars[node[1]] = self.gm.addVar(vtype=gurobipy.GRB.BINARY)
+
+        self._encode_unification_variables(f)
 
         self.gm.update()
 
@@ -167,6 +170,27 @@ class ilp_wmaxsat_solver_t:
         for lit, dependent_nodes in conseq_minimizer.iteritems():
             self.gm.addConstr(self._nvar((-1, lit)) <= gurobipy.quicksum(dependent_nodes))
 
+        # for unification variables.
+        for arity, nodes in f.unifiables.iteritems():
+            literals = set([n[1] for n in nodes])
+
+            for a1 in literals:
+                for a2 in literals:
+
+                    # do nothing for the same literal pair or non-unifiable pair,
+                    if a1 == a2 or None == unify.unify(a1, a2):
+                        continue
+
+                    self._encode_univar(f, a1, a2)
+
+        # for equality variables.
+        for cc in nx.connected_components(f.unifiable_var_graph):
+            for v1, v2, v3 in itertools.combinations(cc, 3):
+                self._encode_eqtransitivity(v1, v2, v3, lazy=False)
+
+        # cost vars.
+        self._encode_costvars(f)
+
         self.gm.update()
 
     def _encode_objective(self, f):
@@ -176,10 +200,59 @@ class ilp_wmaxsat_solver_t:
         self.gm.setAttr(gurobipy.GRB.Attr.ModelSense, -1)
 
         # set coefficients
-        for atom, var in self.sat_vars.iteritems():
+        for atom, var in self.cost_vars.iteritems():
             var.setAttr(gurobipy.GRB.Attr.Obj, math.log(atom[1]))
 
         self.gm.update()
+
+    def _encode_costvars(self, f):
+        for atom, cvar in self.cost_vars.iteritems():
+            arity = parse.arity(atom)
+
+            if parse.is_propositional(atom) or not f.unifiables.has_key(arity):
+                self.gm.addConstr(cvar == self.atom_vars[atom])
+
+            else:
+                # y_p(x) <=> h_p(x) & u_{p(x), p(y)} & ...
+                relatives = [self.atom_vars[atom]]
+
+                for uniatom in set([n[1] for n in f.unifiables[arity]]):
+                    if atom != uniatom:
+                        relatives += [self.uni_vars[atom][uniatom]]
+
+                self.gm.addGenConstrAnd(cvar, relatives)
+
+    def _encode_unification_variables(self, f):
+        '''create ILP variables for unification.'''
+
+        # create varibles for equalities.
+        for cc in nx.connected_components(f.unifiable_var_graph):
+            for v1, v2 in itertools.combinations(cc, 2):
+                v1, v2 = parse.varsort(v1, v2)
+
+                # check unifiability
+                a = ("=", v1, v2)
+
+                if not unify.variablep(v1) and not unify.variablep(v2):
+                    self.atom_vars[a] = self.c0var
+
+                else:
+                    self.atom_vars[a] = self.gm.addVar(vtype=gurobipy.GRB.BINARY, name=repr(a))
+
+        # create variables for unification.
+        for arity, nodes in f.unifiables.iteritems():
+            literals = set([n[1] for n in nodes])
+
+            for l1 in literals:
+                for l2 in literals:
+                    if unify.unify(l1, l2) == None:
+                        self.uni_vars[l1][l2] = self.c1var
+
+                    else:
+                        self.uni_vars[l1][l2] = self.gm.addVar(vtype=gurobipy.GRB.BINARY)
+
+                        for i in xrange(arity[1] - 1):
+                            v1, v2 = parse.varsort(l1[2+i], l2[2+i])
 
     def _encode_and(self, f, node):
         '''c=1 <=> x1=1 \land x2=1 \land ... \land xn=1'''
@@ -237,6 +310,48 @@ class ilp_wmaxsat_solver_t:
             self.gm.addConstr(1-xvar +   yvar <= 2*dvar, name="<=>")
             self.gm.addConstr(  xvar + 1-yvar <= 2*dvar, name="<=>")
 
+    def _encode_univar(self, f, a1, a2):
+        # semantics: u_{a1,a2} = 1 iff a2 is not equivalent to a1 with unification,
+        # nor a2 does not pay the cost.
+        # formally: u_{p(x),p(y)} <=> (p(y) \land y=x => \lnot y_p(y))
+        arity = parse.arity(a1)
+
+        # u_{p(x),p(y)}
+        uvar = self.uni_vars[a1][a2]
+
+        # \lnot p(y)
+        xvars = [1.0 - self.atom_vars[a2]]
+
+        # \lnot y=x
+        for i in xrange(arity[1]-1):
+            if a1[2+i] == a2[2+i]:
+                continue
+
+            v1, v2 = parse.varsort(a1[2+i], a2[2+i])
+            xvars += [1.0 - self.atom_vars[("=", v1, v2)]]
+
+        # \lnot y_p(y)
+        xvars += [1.0 - self.cost_vars[a2]]
+
+        # create the constraint.
+        self.gm.addConstr(uvar <= gurobipy.quicksum(xvars))
+        self.gm.addConstr(gurobipy.quicksum(xvars) <= len(xvars)*uvar)
+
+    def _encode_eqtransitivity(self, x, y, z, lazy=False):
+        # add transitivity constraints.
+        v1, v2 = parse.varsort(x, y)
+        vvar12 = self.atom_vars[("=", v1, v2)]
+        v1, v2 = parse.varsort(y, z)
+        vvar23 = self.atom_vars[("=", v1, v2)]
+        v1, v2 = parse.varsort(x, z)
+        vvar13 = self.atom_vars[("=", v1, v2)]
+
+        _func = self.gm.cbLazy if lazy else \
+                self.gm.addConstr
+
+        _func(vvar12 + vvar23 - vvar13 - 1, gurobipy.GRB.LESS_EQUAL, 0)
+        _func(vvar23 + vvar13 - vvar12 - 1, gurobipy.GRB.LESS_EQUAL, 0)
+        _func(vvar13 + vvar12 - vvar23 - 1, gurobipy.GRB.LESS_EQUAL, 0)
 
 class solution_t:
     def __init__(self, solver):
@@ -247,9 +362,16 @@ class solution_t:
             if var.X > 0.5
         ]
 
+        eqs, noneqs = [a for a in self.raw if a[0] == "="], [a for a in self.raw if a[0] != "="]
+
+        # get the substitution from equality literals.
+        self.theta = self._get_substitutor(eqs)
         self.literals_etc, self.literals_nonetc = [], []
 
-        for l in self.raw:
+        # convert and distribute.
+        for l in sorted(set(parse.list2tuple(
+            unify.skolemize(unify.subst(self.theta, noneqs))
+            ))):
             if parse.is_etc(l):
                 self.literals_etc += [l]
 
@@ -260,7 +382,7 @@ class solution_t:
 
     def check_sum(self):
         '''ensure that the sum of weights of literals is equal to the objective (debug purpose).'''
-        p1, p2, p3 = math.log(etcetera.jointProbability(self.literals)), sum([v.obj for v in self.solver.gm.getVars() if v.X > 0.5]), self.solver.gm.objVal
+        p1, p2, p3 = math.log(etcetera.jointProbability(self.literals_etc)), sum([v.obj for v in self.solver.gm.getVars() if v.X > 0.5]), self.solver.gm.objVal
 
         if abs(p1-p2) >= 1e-6 or abs(p2-p3) >= 1e-6:
             print self.solver.gm.Status
@@ -273,6 +395,30 @@ class solution_t:
     def get_signature(self):
         '''return a unique signature for this solution.'''
         return frozenset([l for l in self.raw if parse.is_etc(l)])
+
+    def _get_substitutor(self, eqs):
+        theta = {}
+        eqgraph = nx.Graph()
+
+        for l in eqs:
+            eqgraph.add_edge(l[1], l[2])
+
+        # for each equality cluster, look for the representative.
+        for cc in nx.connected_components(eqgraph):
+            uvars        = list(cc)
+            new_var_name = uvars[0]
+
+            # find a better name.
+            for t in uvars:
+                if not unify.variablep(t):
+                    new_var_name = t
+                    break
+
+            for t in uvars:
+                if t != new_var_name:
+                    theta[t] = new_var_name
+
+        return theta
 
     def _get_raw_sol(self):
         '''return raw solution.'''

@@ -37,6 +37,9 @@ def nbest_ilp(obs, kb, maxdepth, n, verbose = False, cnf = False, relreason = Fa
 
     sw.start()
 
+    # Standardize the observations.
+    obs = unify.standardize(obs)
+
     if relreason:
         logging.info("Relevant reasoning...")
         rkb, facts, nonab = knowledgebase.obtain_relevant_kb(kb, obs, maxdepth)

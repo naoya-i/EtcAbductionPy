@@ -3,6 +3,7 @@ import cPickle
 import abduction
 import collections
 import parse
+import unify
 
 class text_t:
     def __init__(self, dct):
