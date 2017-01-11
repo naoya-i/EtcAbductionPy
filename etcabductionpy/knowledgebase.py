@@ -4,6 +4,22 @@ import abduction
 import collections
 import parse
 
+class text_t:
+    def __init__(self, dct):
+        self.dct = dct
+
+    def __getitem__(self, k):
+        return self.dct.get(k)
+
+    def __contains__(self, k):
+        return self.dct.has_key(k)
+
+    def get_facts(self):
+        return []
+
+    def get_axioms(self):
+        return self.dct.values()
+        
 class mcdb_t:
     def __init__(self, f):
         self.mcdb = mcdb.read(f)

@@ -125,16 +125,16 @@ for k, v in sorted(vars(args).iteritems(), key=lambda x: x[0]):
     logging.info("  %s: %s" % (k, v if not type(v) == file else v.name))
 
 logging.info("Loading knowledge base...")
+import knowledgebase
 
 if args.kb:
     kblines = args.kb.readlines()
     kbtext = "".join(kblines)
     kbkb, kbobs = parse.definite_clauses(parse.parse(kbtext))
     kb.extend(kbkb)
-    indexed_kb = abduction.index_by_consequent_predicate(kbkb)
+    indexed_kb = knowledgebase.text_t(abduction.index_by_consequent_predicate(kbkb))
 
 if args.kbmcdb:
-    import knowledgebase
     indexed_kb = knowledgebase.mcdb_t(args.kbmcdb)
     logging.info("Knowledge base loaded.")
 

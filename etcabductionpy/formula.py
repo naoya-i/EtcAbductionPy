@@ -26,7 +26,7 @@ class formula_t(object):
         f.nxg = self.nxg.copy()
         f.levels = self.levels.copy()
         f.parents = self.parents.copy()
-        f.unique_id = self.unique_id
+        f.unique_id = self.unique_idc
         return f
 
     def visualize(self, out):
@@ -57,6 +57,33 @@ class formula_t(object):
 
         for l in nonab:
             self.nxg.add_edge(gnid_conj, self._create_node(parse.negate(l)))
+
+    def scan_unifiables(self):
+        '''store list of literals with the same predicates.'''
+        _unifiables = collections.defaultdict(list)
+
+        for node in self.nxg.nodes_iter():
+            if is_opr(node[1]):
+                continue
+
+            if not parse.is_etc(node[1]):
+                continue
+
+            ari = parse.arity(node[1])
+            _unifiables[ari] += [node]
+
+            if len(_unifiables[ari]) >= 2:
+                self.unifiables[ari] = _unifiables[ari]
+
+        for arity, nodes in self.unifiables.iteritems():
+            for n1, n2 in itertools.combinations(nodes, 2):
+                theta = unify.unify(n1[1], n2[1])
+
+                if None == theta:
+                    continue
+
+                for t in theta:
+                    self.unifiable_var_graph.add_edge(t, theta[t])
 
     def _create_node(self, dat, level = 0, parent = None):
         self.unique_id += 1
