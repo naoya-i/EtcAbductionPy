@@ -134,7 +134,7 @@ class ilp_wmaxsat_solver_t:
 
                 self.node_vars[node] = self.atom_vars[a]
 
-            # create satisfiability variable (for etcetera literals).
+            # create cost variable (for etcetera literals).
             if parse.is_etc(node[1]):
                 self.cost_vars[node[1]] = self.gm.addVar(vtype=gurobipy.GRB.BINARY)
 
@@ -188,12 +188,14 @@ class ilp_wmaxsat_solver_t:
                     self._encode_univar(f, a1, a2)
 
         # for equality variables.
-        for cc in nx.connected_components(f.unifiable_var_graph):
-            for v1, v2, v3 in itertools.combinations(cc, 3):
-                self._encode_eqtransitivity(v1, v2, v3, lazy=True)
+        if self.use_eqtransitivity:
+            for cc in nx.connected_components(f.unifiable_var_graph):
+                for v1, v2, v3 in itertools.combinations(cc, 3):
+                    self._encode_eqtransitivity(v1, v2, v3, lazy=self.use_lazyeqtrans)
 
-        # cost vars.
-        self._encode_costvars(f)
+        # for cost vars.
+        for atom in self.cost_vars:
+            self._encode_costvar(f, atom)
 
         self.gm.update()
 
@@ -209,23 +211,7 @@ class ilp_wmaxsat_solver_t:
 
         self.gm.update()
 
-    def _encode_costvars(self, f):
-        for atom, cvar in self.cost_vars.iteritems():
-            arity = parse.arity(atom)
-
-            if parse.is_propositional(atom) or not f.unifiables.has_key(arity):
-                self.gm.addConstr(cvar == self.atom_vars[atom])
-
-            else:
-                # y_p(x) <=> h_p(x) & u_{p(x), p(y)} & ...
-                relatives = [self.atom_vars[atom]]
-
-                for uniatom in set([n[1] for n in f.unifiables[arity]]):
-                    if atom != uniatom:
-                        relatives += [self.uni_vars[atom][uniatom]]
-
-                self.gm.addGenConstrAnd(cvar, relatives)
-
+    '''variable encoder.'''
     def _encode_unification_variables(self, f):
         '''create ILP variables for unification.'''
 
@@ -258,6 +244,7 @@ class ilp_wmaxsat_solver_t:
                         for i in xrange(arity[1] - 1):
                             v1, v2 = parse.varsort(l1[2+i], l2[2+i])
 
+    '''constraint encoder.'''
     def _encode_and(self, f, node):
         '''c=1 <=> x1=1 \land x2=1 \land ... \land xn=1'''
         cvar, xvars = self._nvar(node), [self._nvar(x) for x in f.nxg.successors(node)]
@@ -313,6 +300,27 @@ class ilp_wmaxsat_solver_t:
             self.gm.addConstr(dvar <=   xvar + 1-yvar, name="<=>")
             self.gm.addConstr(1-xvar +   yvar <= 2*dvar, name="<=>")
             self.gm.addConstr(  xvar + 1-yvar <= 2*dvar, name="<=>")
+
+    def _encode_costvar(self, f, atom):
+        '''
+        encode the contraint "y_p(x) <=> h_p(x) & u_{p(x), p(y)} & ...", where
+        u_{p(x),p(y)} <=> h_{p(y)} & x=y => \lnot y_{p(y)} which is encoded in another function.
+        '''
+        cvar = self.cost_vars[atom]
+        arity = parse.arity(atom)
+
+        if parse.is_propositional(atom) or not f.unifiables.has_key(arity):
+            self.gm.addConstr(cvar == self.atom_vars[atom])
+
+        else:
+            # y_p(x) <=> h_p(x) & u_{p(x), p(y)} & ...
+            relatives = [self.atom_vars[atom]]
+
+            for uniatom in set([n[1] for n in f.unifiables[arity]]):
+                if atom != uniatom:
+                    relatives += [self.uni_vars[atom][uniatom]]
+
+            self.gm.addGenConstrAnd(cvar, relatives)
 
     def _encode_univar(self, f, a1, a2):
         # semantics: u_{a1,a2} = 1 iff a2 is not equivalent to a1 with unification,
