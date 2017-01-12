@@ -63,5 +63,5 @@ For advanced use:
 * `--ilp-verbose` or `-lv`: Output an ILP solver log.
 * `--ilp-no-relreason` or `-lnorel`: Do not perform relevant reasoning.
 * `--ilp-use-cnf` or `-lcnf`: Use CNF for clark completion.
-* `--ilp-no-transitivity` or `-lnotrans`: Do not enforce equality transitivitys.
+* `--ilp-no-transitivity` or `-lnotrans`: Do not enforce equality transitivity.
 * `--ilp-lazy-transitivity` or `-llazytrans`: Use lazy constraints for equality transitivity.
