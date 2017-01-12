@@ -140,7 +140,8 @@ if args.kb:
     kbtext = "".join(kblines)
     kbkb, kbobs = parse.definite_clauses(parse.parse(kbtext))
     kb.extend(kbkb)
-    indexed_kb = knowledgebase.text_t(abduction.index_by_consequent_predicate(kbkb))
+
+indexed_kb = knowledgebase.text_t(abduction.index_by_consequent_predicate(kb))
 
 if args.kbmcdb:
     indexed_kb = knowledgebase.mcdb_t(args.kbmcdb)
