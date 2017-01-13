@@ -20,6 +20,9 @@ The forked project depends on the following external libraries:
 
 - networkx (http://networkx.readthedocs.io/en/stable/install.html)
     - If you are using `pip`, just type `pip install networkx`
+- mcdb (https://github.com/gstrauss/mcdb)
+    - Clone the repository and `make`
+    - Go to `contrib/python-mcdb` and then `python setup.py install`
 - Gurobi optimizer (above 7.0, https://www.gurobi.com/) + Python binding
     - General installation guide:
         - https://www.gurobi.com/downloads/download-center
@@ -60,5 +63,5 @@ For advanced use:
 * `--ilp-verbose` or `-lv`: Output an ILP solver log.
 * `--ilp-no-relreason` or `-lnorel`: Do not perform relevant reasoning.
 * `--ilp-use-cnf` or `-lcnf`: Use CNF for clark completion.
-* `--ilp-no-transitivity` or `-lnotrans`: Do not enforce equality transitivitys.
+* `--ilp-no-transitivity` or `-lnotrans`: Do not enforce equality transitivity.
 * `--ilp-lazy-transitivity` or `-llazytrans`: Use lazy constraints for equality transitivity.
