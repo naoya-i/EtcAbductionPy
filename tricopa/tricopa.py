@@ -1,6 +1,6 @@
 # tricopa.py : Use etcabductionpy to solve tricopa problems
 # Andrew S. Gordon
-# November 2015
+# November 2015 # January 2017 ILP
 
 from __future__ import print_function
 import argparse
@@ -9,9 +9,15 @@ import re
 
 sys.path.append('../etcabductionpy')
 import etcetera
+import etcetera_ilp
 import parse
 import forward
 import unify
+import knowledgebase
+import abduction
+
+# Use ILP?
+use_ilp = False
 
 # Question class and parser
 
@@ -73,8 +79,12 @@ def highestPercent(entailedlist, alt): #index of highest percentEntailed
 def entailedlist(obs, nbest, kb):
     return [[pair[0] for pair in forward.forward(n, kb)] for n in nbest]
 
-def score1q(q, kb, depth, n):
-    nbest = etcetera.nbest(q.given(), kb, depth, n)
+def score1q(q, kb, indexed_kb, depth, n):
+    if use_ilp:
+        nbest = etcetera_ilp.nbest_ilp(q.given(), indexed_kb, args)
+    else:
+        nbest = etcetera.nbest(q.given(), kb, indexed_kb, depth, n)
+        
     elist = entailedlist(q.given(), nbest, kb)
     altaIndex, altaPercent = highestPercent(elist, q.alta())
     altbIndex, altbPercent = highestPercent(elist, q.altb())
@@ -98,23 +108,29 @@ def score1q(q, kb, depth, n):
     print(q.number(), q.answer(), altaIndex, altaPercent, altbIndex, altbPercent, score)
     return score
 
-def scoreall(qlist, kb, depth, n):
+def scoreall(qlist, kb, indexed_kb, depth, n):
     score = 0
     for q in qlist:
         if q.number() not in [68]:
-            score += score1q(q, kb, depth, n)
+            score += score1q(q, kb, indexed_kb, depth, n)
     return(score)
 
-def workflow(q, kb, depth):
-    best = etcetera.nbest(q.given(), kb, depth, 1)[0]
+def workflow(q, kb, indexed_kb, depth):
+    if use_ilp:
+        best = etcetera_ilp.nbest_ilp(q.given(), indexed_kb, args)[0]
+    else:
+        best = etcetera.nbest(q.given(), kb, indexed_kb, depth, 1)[0]
     return(forward.graph(best, forward.forward(best, kb), targets=q.given()))
 
-def xbestproof(q, kb, depth, x):
-    xbest = etcetera.nbest(q.given(), kb, depth, x + 1)[x]
+def xbestproof(q, kb, indexed_kb, depth, x):
+    if use_ilp:
+        xbest = etcetera_ilp.nbest_ilp(q.given(), indexed_kb, args)[x]
+    else:
+        xbest = etcetera.nbest(q.given(), kb, indexed_kb, depth, x + 1)[x]
     return(forward.graph(xbest, forward.forward(xbest, kb), targets=q.given()))
 
 # command-line control
-        
+
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument('-i', '--infile', nargs='?', type=argparse.FileType('r'), default=sys.stdin)
@@ -127,31 +143,44 @@ if __name__ == "__main__":
     argparser.add_argument('-n', '--nbest', type=int, default=10)
     argparser.add_argument('-g', '--graph', action="store_true")
     argparser.add_argument('-x', '--xbestproof', type=int)
+    argparser.add_argument('-l', '--ilp', action="store_true")
+    argparser.add_argument('-lv','--ilp-verbose',
+                           action='store_true',
+                           help='Output ILP solver log')
+
+    argparser.add_argument('-lnonetc', '--ilp-show-nonetc',
+                       action='store_true',
+                       help='Show non-etcetera literals.')
+
+    argparser.add_argument('-lnr','--ilp-no-relreason',
+                       action='store_true',
+                       help='Do not perform relevant reasoning.')
+
+    argparser.add_argument('-lcnf','--ilp-use-cnf',
+                       action='store_true',
+                       help='Use CNF for clark completion.')
+
+    argparser.add_argument('-lnotrans', '--ilp-no-transitivity',
+                       action='store_true',
+                       help='Do not enforce equality transitivity.')
+
+    argparser.add_argument('-llazytrans', '--ilp-lazy-transitivity',
+                       action='store_true',
+                       help='Use lazy constraints for equality transitivity.')
     args = argparser.parse_args()
+    if args.ilp: use_ilp = True
     questionlist = tcparse(args.tricopa, args.answers) # a list
     kb, ignore = parse.definite_clauses(parse.parse("".join(args.kb.readlines())))
+
+    indexed_kb = knowledgebase.text_t(abduction.index_by_consequent_predicate(kb))
 
     if args.question:
         if args.graph:
             if args.xbestproof:
-                print(xbestproof(questionlist[args.question -1], kb, args.depth, args.xbestproof))
+                print(xbestproof(questionlist[args.question -1], kb, indexed_kb, args.depth, args.xbestproof))
             else:
-                print(workflow(questionlist[args.question -1], kb, args.depth))
+                print(workflow(questionlist[args.question -1], kb, indexed_kb, args.depth))
         else:
-            print(score1q(questionlist[args.question - 1], kb, args.depth, args.nbest))
+            print(score1q(questionlist[args.question - 1], kb, indexed_kb, args.depth, args.nbest))
     else:
-        print(scoreall(questionlist, kb, args.depth, args.nbest))
-    
-                            
-
-
-
-
-            
-        
-        
-
-
-
-    
-    
+        print(scoreall(questionlist, kb, indexed_kb, args.depth, args.nbest))
