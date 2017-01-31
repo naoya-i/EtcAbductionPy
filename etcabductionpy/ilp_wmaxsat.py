@@ -25,9 +25,11 @@ class ilp_wmaxsat_solver_t:
         self.atom_vars = {}
         self.cost_vars = {}
         self.uni_vars = collections.defaultdict(dict)
+        self.uni_atoms_appear_vars = {}
 
         self.c0var, self.c1var = None, None
 
+        self.eq_srcs = collections.defaultdict(list)
         self.formula = None
 
         # options.
@@ -78,12 +80,7 @@ class ilp_wmaxsat_solver_t:
 
             # deny the current sol.
             if len(sols) < n:
-                self.gm.addConstr(gurobipy.quicksum([
-                    var
-                    if var.X > 0.5 else
-                    1.0 - var
-                    for var in self.atom_vars.values()
-                    ]) <= len(self.atom_vars)-1)
+                self.gm.addConstr(sol.create_nbest_constraint())
 
     def print_iis(self):
         '''output IIS for debug.'''
@@ -187,6 +184,15 @@ class ilp_wmaxsat_solver_t:
 
                     self._encode_univar(f, a1, a2)
 
+            for a1, a2 in itertools.combinations(literals, 2):
+                if None == unify.unify(a1, a2):
+                    continue
+
+                self._encode_uniatomappear_var(f, a1, a2)
+
+        for (v1, v2), srcs in self.eq_srcs.iteritems():
+            self.gm.addConstr(self.atom_vars[("=", v1, v2)] <= gurobipy.quicksum(srcs))
+
         # for equality variables.
         if self.use_eqtransitivity:
             for cc in nx.connected_components(f.unifiable_var_graph):
@@ -229,6 +235,7 @@ class ilp_wmaxsat_solver_t:
                 else:
                     self.atom_vars[a] = self.gm.addVar(vtype=gurobipy.GRB.BINARY, name=repr(a))
 
+
         # create variables for unification.
         for arity, nodes in f.unifiables.iteritems():
             literals = set([n[1] for n in nodes])
@@ -243,6 +250,11 @@ class ilp_wmaxsat_solver_t:
 
                         for i in xrange(arity[1] - 1):
                             v1, v2 = parse.varsort(l1[2+i], l2[2+i])
+
+                        _l1, _l2 = parse.varsort(l1, l2)
+
+                        if not self.uni_atoms_appear_vars.has_key((_l1, _l2)):
+                            self.uni_atoms_appear_vars[(_l1, _l2)] = self.gm.addVar(vtype=gurobipy.GRB.BINARY)
 
     '''constraint encoder.'''
     def _encode_and(self, f, node):
@@ -317,7 +329,7 @@ class ilp_wmaxsat_solver_t:
             relatives = [self.atom_vars[atom]]
 
             for uniatom in set([n[1] for n in f.unifiables[arity]]):
-                if atom != uniatom:
+                if atom != uniatom and None != unify.unify(atom, uniatom):
                     relatives += [self.uni_vars[atom][uniatom]]
 
             self.gm.addGenConstrAnd(cvar, relatives)
@@ -348,6 +360,20 @@ class ilp_wmaxsat_solver_t:
         # create the constraint.
         self.gm.addConstr(uvar <= gurobipy.quicksum(xvars))
         self.gm.addConstr(gurobipy.quicksum(xvars) <= len(xvars)*uvar)
+
+    def _encode_uniatomappear_var(self, f, a1, a2):
+        a1, a2 = parse.varsort(a1, a2)
+        arity = parse.arity(a1)
+
+        for i in xrange(arity[1]-1):
+            if a1[2+i] == a2[2+i]:
+                continue
+
+            v1, v2 = parse.varsort(a1[2+i], a2[2+i])
+            self.eq_srcs[(v1, v2)] += [(self.uni_atoms_appear_vars[(a1, a2)])]
+
+        # u_{_a1, _a2} <=> _a1 & _a2
+        self.gm.addGenConstrAnd(self.uni_atoms_appear_vars[(a1, a2)], [self.atom_vars[a1], self.atom_vars[a2]])
 
     def _encode_eqtransitivity(self, x, y, z, lazy=False):
 
@@ -410,6 +436,31 @@ class solution_t:
     def get_signature(self):
         '''return a unique signature for this solution.'''
         return frozenset([l for l in self.raw if parse.is_etc(l)])
+
+    def create_nbest_constraint(self):
+        '''return a linear constraint for finding the next-best solution.'''
+
+        # identify terms which appear in the current solution.
+        exposed_terms = set(reduce(
+            list.__add__,
+            map(lambda (atom, var): list(atom[1:]),
+                filter(lambda (atom, var): atom[0] != "=" and var.X>0.5, self.solver.atom_vars.iteritems()
+                ))
+            ))
+
+        # identify relevant atom vars.
+        relevant_atom_vars = map(lambda (atom, var): var,
+            filter(
+                lambda (atom, var): var.X > 0.5 and (atom[0] != "=" or (atom[1] in exposed_terms and atom[2] in exposed_terms)),
+                self.solver.atom_vars.iteritems()
+            ))
+
+        return gurobipy.quicksum([
+            var
+            if var.X > 0.5 else
+            1.0 - var
+            for var in relevant_atom_vars
+            ]) <= len(relevant_atom_vars)-1
 
     def _get_substitutor(self, eqs):
         theta = {}
